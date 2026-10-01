@@ -1,0 +1,11 @@
+import type { Product } from "@/types/product";
+
+const timestamp = "2026-09-30T08:00:00.000Z";
+const image = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=900&q=85`;
+
+export const initialProducts: Product[] = [
+  { id: "183t1o4", name: "Air Force 1 '07", brand: "Nike", color: "Đen / Trắng", size: ["40", "41", "42", "43"], quantity: 12, image_urls: [image("photo-1542291026-7eec264c27ff")], image_notes: "Ảnh đối chiếu lô nhập tháng 9.", description: "Mẫu giày da cổ điển với đế Air êm, đã kiểm tra đủ phụ kiện.", category: "Giày", status: "available", location: "Kệ A-03", created_by: "Trần Ngọc", created_at: timestamp, updated_at: timestamp, search_keywords: ["air force", "af1", "sneaker"] },
+  { id: "184y99", name: "Ultraboost Light", brand: "Adidas", color: "Trắng kem", size: ["39", "40", "41", "42", "43"], quantity: 8, image_urls: [image("photo-1608231387042-66d1773070a5")], image_notes: "Đã chụp mặt bên và tem size.", description: "Giày chạy bộ đệm nhẹ, thân dệt thoáng khí.", category: "Giày", status: "available", location: "Kệ B-02", created_by: "Trần Ngọc", created_at: timestamp, updated_at: timestamp, search_keywords: ["ultraboost", "boost", "chạy bộ"] },
+  { id: "nk-2450", name: "Dunk Low Retro", brand: "Nike", color: "Trắng / Xanh", size: ["39", "40", "41", "42"], quantity: 4, image_urls: [image("photo-1552346154-21d32810aba3")], image_notes: "Đã đối chiếu màu thực tế.", description: "Dáng low-top phối màu tương phản, chất liệu da tổng hợp.", category: "Giày", status: "low_stock", location: "Kệ A-07", created_by: "Trần Ngọc", created_at: timestamp, updated_at: timestamp, search_keywords: ["dunk", "low"] },
+  { id: "nb-5301", name: "530 Sneaker", brand: "New Balance", color: "Xám bạc", size: ["39", "40", "41", "42"], quantity: 0, image_urls: [image("photo-1539185441755-769473a23570")], image_notes: "Ảnh lô cũ để đối chiếu khi nhập lại.", description: "Giày phong cách retro, thân lưới thoáng khí và đệm nhẹ.", category: "Giày", status: "out_of_stock", location: "Kệ C-11", created_by: "Trần Ngọc", created_at: timestamp, updated_at: timestamp, search_keywords: ["530", "nb"] },
+];
