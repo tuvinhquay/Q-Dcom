@@ -1,34 +1,41 @@
 "use client";
 
 import {
-  Activity, ArrowRight, BarChart3, Bot, Boxes, Check, CheckCircle2, ChevronRight,
-  CircleAlert, ImagePlus, LayoutDashboard, MapPin, MessageCircle, Package,
-  Paperclip, Pencil, Plus, Search, Send, Settings as SettingsIcon, ShieldCheck,
-  SlidersHorizontal, Sparkles, Trash2, Upload, Video, Wifi, X,
+  Activity, ArrowRight, BadgeCheck, BarChart3, Bot, Boxes, Check, CheckCircle2, ChevronRight,
+  Camera, CircleAlert, Download, ImagePlus, LayoutDashboard, LockKeyhole, LogOut,
+  MapPin, MessageCircle, Package, Paperclip, Pencil, Plus, QrCode, Search, Send,
+  Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sparkles, Trash2,
+  Upload, Users, Video, X, IdCard, UserRound, KeyRound, BriefcaseBusiness,
 } from "lucide-react";
 import Image from "next/image";
 import type { ChangeEvent, CSSProperties, FormEvent, ReactNode } from "react";
 import { startTransition, useEffect, useRef, useState } from "react";
+import { GoogleLogin } from "@react-oauth/google";
+import { QRCodeSVG } from "qrcode.react";
 import { BackgroundVideo } from "@/components/background-video";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductImage } from "@/components/products/ProductImage";
+import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { SearchBar } from "@/components/search/SearchBar";
-import { appConfig } from "@/config/app.config";
-import { initialProducts } from "@/data/mockProducts";
 import { parseQBotQuery } from "@/lib/bot/qBotParser";
 import { copyDefaultVocabulary, type BotIntent, type BotVocabulary } from "@/lib/bot/vocabulary";
-import { probeCloudflareTunnel } from "@/lib/services/cloudflareTunnel";
-import { adjustProductQuantity, deleteProduct, listProducts, saveProduct, USE_LOCAL_SERVER, type ProductServiceConfig } from "@/lib/services/productService";
+import { qdcomDB, type QDcomMember } from "@/lib/db/qdcomDB";
+import { parseBackup, parseSharePayload, serializeBackup, createSharePayload } from "@/lib/sync/qdcomSync";
+import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
 import type { Product, ProductStatus } from "@/types/product";
 
 type PageKey = "inventory" | "bot" | "reports" | "settings";
 type ChatMessage = { id: number; role: "user" | "assistant"; text: string; productIds?: string[] };
-type Settings = { useLocalServer: boolean; serverUrl: string; videoEnabled: boolean; glassBlur: number; glassOpacity: number; videoTint: string };
-type ProductDraft = Omit<Product, "remote_record_id" | "created_at" | "updated_at">;
+type Settings = { videoEnabled: boolean; glassBlur: number; glassOpacity: number; videoTint: string };
+type GoogleProfile = { peerId: string; googleSub: string; displayName: string; email: string; avatar: string; memberId?: string; specialty?: string };
+type RegistrationDetails = { memberId: string; fullName: string; specialty: string };
+type ProductDraft = Omit<Product, "created_at" | "updated_at">;
 const SETTINGS_KEY = "qdcom.settings.v1";
 const VOCABULARY_KEY = "qdcom.bot-vocabulary.v1";
 const CHAT_KEY = "qdcom.chat.v1";
-const defaults: Settings = { useLocalServer: USE_LOCAL_SERVER, serverUrl: appConfig.integrations.pocketbase.baseUrl, videoEnabled: true, glassBlur: 18, glassOpacity: 74, videoTint: "#2563eb" };
+const PROFILE_KEY = "qdcom.user_profile.v1";
+const PEER_KEY = "qdcom.peer_id.v1";
+const defaults: Settings = { videoEnabled: true, glassBlur: 18, glassOpacity: 74, videoTint: "#2563eb" };
 const pages: { id: PageKey; label: string; icon: typeof Package }[] = [
   { id: "inventory", label: "Mẫu hàng & kho", icon: LayoutDashboard },
   { id: "bot", label: "Tra cứu @q", icon: MessageCircle },
@@ -42,12 +49,18 @@ function readSaved<T>(key: string, fallback: T): T {
   try { const value = window.localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; }
   catch { return fallback; }
 }
+function readGoogleProfile(): GoogleProfile | null {
+  const profile = readSaved<Partial<GoogleProfile> | null>(PROFILE_KEY, null);
+  return profile && typeof profile.peerId === "string" && typeof profile.googleSub === "string" &&
+    typeof profile.displayName === "string" && typeof profile.email === "string" && typeof profile.avatar === "string"
+    ? profile as GoogleProfile
+    : null;
+}
 function stockStatus(quantity: number): ProductStatus { return quantity <= 0 ? "out_of_stock" : quantity <= 4 ? "low_stock" : "available"; }
 function newId() { return `qd${Math.random().toString(36).slice(2, 8)}`; }
 function emptyDraft(product?: Product): ProductDraft {
   if (product) {
-    const { remote_record_id, created_at, updated_at, ...draft } = product;
-    void remote_record_id;
+    const { created_at, updated_at, ...draft } = product;
     void created_at;
     void updated_at;
     return draft;
@@ -63,6 +76,11 @@ function Badge({ status }: { status: ProductStatus }) {
 export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
+  const [userProfile, setUserProfile] = useState<GoogleProfile | null>(null);
+  const [authMode, setAuthMode] = useState<"register" | "login">("register");
+  const [registrationDetails, setRegistrationDetails] = useState<RegistrationDetails | null>(null);
+  const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", password: "", confirmPassword: "", specialty: "" });
+  const [members, setMembers] = useState<QDcomMember[]>([]);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [vocabulary, setVocabulary] = useState<BotVocabulary>(copyDefaultVocabulary());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -78,32 +96,49 @@ export function QDcomApp() {
   const [botInput, setBotInput] = useState("");
   const [newWord, setNewWord] = useState("");
   const [newIntent, setNewIntent] = useState<Exclude<BotIntent, "SEARCH">>("CHECK_QUANTITY");
-  const [connectionText, setConnectionText] = useState("");
-  const [connectionState, setConnectionState] = useState<"idle" | "ok" | "error">("idle");
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
+  const googleAuthRef = useRef<HTMLDivElement>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareValue, setShareValue] = useState("");
+  const [shareSelection, setShareSelection] = useState<string[]>([]);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [syncError, setSyncError] = useState("");
   const messageEnd = useRef<HTMLDivElement>(null);
+  const backupInput = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<number | undefined>(undefined);
-  const service: ProductServiceConfig = { useLocalServer: settings.useLocalServer, serverUrl: settings.serverUrl };
 
   useEffect(() => {
-    const savedSettings = { ...defaults, ...readSaved<Partial<Settings>>(SETTINGS_KEY, {}) };
+    const storedSettings = readSaved<Partial<Settings>>(SETTINGS_KEY, {});
+    const savedSettings = { ...defaults, ...storedSettings };
     const savedMessages = readSaved<ChatMessage[]>(CHAT_KEY, []);
     startTransition(() => {
       setSettings(savedSettings);
-      setVocabulary(readSaved<BotVocabulary>(VOCABULARY_KEY, copyDefaultVocabulary()));
+      setUserProfile(readGoogleProfile());
       setMessages(savedMessages.length ? savedMessages : [{ id: Date.now(), role: "assistant", text: "Chào bạn! Mình là Q-Dcom Bot. Nhập mã mẫu, tên hàng hoặc vị trí kệ để bắt đầu tra cứu." }]);
     });
-    void listProducts(savedSettings).then(setProducts).catch((error: unknown) => {
-        setProducts(savedSettings.useLocalServer ? [] : initialProducts); setConnectionState("error");
-      setConnectionText(error instanceof Error ? error.message : "Không thể tải dữ liệu kho.");
-    }).finally(() => setReady(true));
+    void Promise.all([listProducts(), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()])
+      .then(([loadedProducts, storedVocabulary, storedMembers]) => {
+        setProducts(loadedProducts);
+        setMembers(storedMembers);
+        const savedVocabulary = storedVocabulary?.value ?? readSaved<BotVocabulary>(VOCABULARY_KEY, copyDefaultVocabulary());
+        setVocabulary(savedVocabulary);
+        if (!storedVocabulary) void qdcomDB.botVocabulary.put({ id: "main", value: savedVocabulary });
+      })
+      .catch((error: unknown) => notify(error instanceof Error ? error.message : "Không thể mở cơ sở dữ liệu ngoại tuyến."))
+      .finally(() => setReady(true));
   }, []);
   useEffect(() => {
     if (messages.length) window.localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-80)));
     messageEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  useEffect(() => {
+    if (registrationDetails) googleAuthRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [registrationDetails]);
+  useEffect(() => {
+    if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
+  }, []);
 
   const activeProducts = products.filter((product) => product.status !== "hidden");
   const shownProducts = activeProducts.filter((product) => {
@@ -123,7 +158,7 @@ export function QDcomApp() {
   function saveSettings(next: Settings) { setSettings(next); window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); }
   function openEditor(product?: Product) { setEditingId(product?.id ?? null); setDraft(emptyDraft(product)); setEditorOpen(true); }
   async function adjust(product: Product, delta: number) {
-    try { const updated = await adjustProductQuantity(product.id, delta, service); setProducts((items) => items.map((item) => item.id === updated.id ? updated : item)); }
+    try { const updated = await adjustProductQuantity(product.id, delta); setProducts((items) => items.map((item) => item.id === updated.id ? updated : item)); }
     catch (error) { notify(error instanceof Error ? error.message : "Không thể cập nhật tồn kho."); }
   }
   async function saveDraft(event: FormEvent<HTMLFormElement>) {
@@ -138,11 +173,10 @@ export function QDcomApp() {
       image_urls: draft.image_urls.filter(Boolean), search_keywords: draft.search_keywords.map((word) => word.trim()).filter(Boolean),
       status: previous?.status === "hidden" ? "hidden" : stockStatus(Math.max(0, Number(draft.quantity) || 0)),
       created_at: previous?.created_at ?? now, updated_at: now,
-      ...(previous?.remote_record_id ? { remote_record_id: previous.remote_record_id } : {}),
     };
     setBusy(true);
     try {
-      const saved = await saveProduct(product, service, editingId ?? undefined);
+      const saved = await saveProduct(product, editingId ?? undefined);
       setProducts((items) => editingId ? items.map((item) => item.id === editingId ? saved : item) : [saved, ...items]);
       setEditorOpen(false); setSelectedId(null); notify(editingId ? "Đã cập nhật mẫu hàng." : "Đã thêm mẫu hàng vào kho.");
     } catch (error) { notify(error instanceof Error ? error.message : "Không thể lưu mẫu hàng."); }
@@ -150,7 +184,7 @@ export function QDcomApp() {
   }
   async function removeProduct(product: Product) {
     if (!window.confirm(`Xóa mẫu ${product.name} (${product.id}) khỏi kho?`)) return;
-    try { await deleteProduct(product.id, service); setProducts((items) => items.filter((item) => item.id !== product.id)); setSelectedId(null); setEditorOpen(false); notify("Đã xóa mẫu hàng khỏi kho."); }
+    try { await deleteProduct(product.id); setProducts((items) => items.filter((item) => item.id !== product.id)); setSelectedId(null); setEditorOpen(false); notify("Đã xóa mẫu hàng khỏi kho."); }
     catch (error) { notify(error instanceof Error ? error.message : "Không thể xóa mẫu hàng."); }
   }
   function appendMessage(role: ChatMessage["role"], text: string, productIds?: string[]) {
@@ -163,7 +197,10 @@ export function QDcomApp() {
     appendMessage("assistant", answer.message, answer.products.map((product) => product.id));
     setBotInput(""); setPage("bot");
   }
-  function storeVocabulary(next: BotVocabulary) { setVocabulary(next); window.localStorage.setItem(VOCABULARY_KEY, JSON.stringify(next)); }
+  function storeVocabulary(next: BotVocabulary) {
+    setVocabulary(next);
+    void qdcomDB.botVocabulary.put({ id: "main", value: next }).catch(() => notify("Không lưu được từ vựng vào cơ sở dữ liệu ngoại tuyến."));
+  }
   function addWord(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const word = newWord.trim(); if (!word) return;
     const list = vocabulary.intents[newIntent];
@@ -173,16 +210,133 @@ export function QDcomApp() {
   function removeWord(intent: Exclude<BotIntent, "SEARCH">, word: string) {
     storeVocabulary({ ...vocabulary, intents: { ...vocabulary.intents, [intent]: vocabulary.intents[intent].filter((item) => item !== word) } });
   }
-  async function testConnection() {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    if (!settings.useLocalServer) { setConnectionState("ok"); setConnectionText("Đang lưu dữ liệu trên trình duyệt này."); notify("Đã lưu cài đặt kho nội bộ."); return; }
-    if (!settings.serverUrl.trim()) { setConnectionState("error"); setConnectionText("Nhập địa chỉ máy chủ trước khi kiểm tra."); return; }
-    setBusy(true); setConnectionState("idle"); setConnectionText("");
+  function handleGoogleLogin(credential?: string) {
+    if (!credential) { notify("Google không trả về thông tin hồ sơ."); return; }
     try {
-      await probeCloudflareTunnel(settings.serverUrl);
-      setProducts(await listProducts(service)); setConnectionState("ok"); setConnectionText("Máy chủ phản hồi và danh sách kho đã tải."); notify("Đã lưu và kết nối máy chủ.");
-    } catch (error) { setConnectionState("error"); setConnectionText(error instanceof Error ? error.message : "Không thể kết nối máy chủ."); }
-    finally { setBusy(false); }
+      const encoded = credential.split(".")[1];
+      const bytes = Uint8Array.from(window.atob(encoded.replace(/-/g, "+").replace(/_/g, "/")), (character) => character.charCodeAt(0));
+      const claims = JSON.parse(new TextDecoder().decode(bytes)) as { sub?: unknown; name?: unknown; email?: unknown; picture?: unknown; email_verified?: unknown };
+      if (typeof claims.sub !== "string" || typeof claims.email !== "string" || claims.email_verified !== true) throw new Error("Hồ sơ Google chưa xác minh email.");
+      const peerId = readSaved<string>(PEER_KEY, "") || (window.crypto.randomUUID?.() ?? `qd-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      window.localStorage.setItem(PEER_KEY, peerId);
+      const profile: GoogleProfile = {
+        peerId,
+        googleSub: claims.sub,
+        displayName: registrationDetails?.fullName || (typeof claims.name === "string" ? claims.name : claims.email),
+        email: claims.email,
+        avatar: typeof claims.picture === "string" && claims.picture.startsWith("https://") ? claims.picture : "",
+        ...(registrationDetails ? { memberId: registrationDetails.memberId, specialty: registrationDetails.specialty } : {}),
+      };
+      window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      setUserProfile(profile);
+      setRegistrationDetails(null);
+      notify(registrationDetails ? `Đã đăng ký hồ sơ Q-Dcom: ${profile.displayName}.` : `Đã đăng nhập Google: ${profile.displayName}.`);
+    } catch (error) { notify(error instanceof Error ? error.message : "Không thể đọc hồ sơ Google."); }
+  }
+  function submitRegistration(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!registrationDraft.memberId.trim() || !registrationDraft.fullName.trim() || !registrationDraft.specialty.trim()) {
+      notify("Vui lòng nhập đầy đủ ID thành viên, họ tên và chuyên ngành.");
+      return;
+    }
+    if (registrationDraft.password.length < 8) { notify("Mật khẩu cần có ít nhất 8 ký tự."); return; }
+    if (registrationDraft.password !== registrationDraft.confirmPassword) { notify("Mật khẩu xác nhận không khớp."); return; }
+    setRegistrationDetails({
+      memberId: registrationDraft.memberId.trim(),
+      fullName: registrationDraft.fullName.trim(),
+      specialty: registrationDraft.specialty.trim(),
+    });
+    setRegistrationDraft((draft) => ({ ...draft, password: "", confirmPassword: "" }));
+    notify("Thông tin đã sẵn sàng. Tiếp tục với Google để hoàn tất đăng ký.");
+  }
+  function updateRegistrationDraft(field: keyof typeof registrationDraft, value: string) {
+    setRegistrationDraft((draft) => ({ ...draft, [field]: value }));
+    setRegistrationDetails(null);
+  }
+  function logoutGoogle() {
+    window.localStorage.removeItem(PROFILE_KEY);
+    setUserProfile(null);
+    notify("Đã đăng xuất Google trên thiết bị này.");
+  }
+  function openShareDialog() {
+    setShareSelection([]);
+    setShareValue("");
+    setSyncError("");
+    setShareOpen(true);
+  }
+  function createShareQr() {
+    try {
+      const peerId = userProfile?.peerId ?? (readSaved<string>(PEER_KEY, "") || window.crypto.randomUUID());
+      window.localStorage.setItem(PEER_KEY, peerId);
+      const selectedProducts = products.filter((product) => shareSelection.includes(product.id));
+      setShareValue(createSharePayload({
+        peerId,
+        displayName: userProfile?.displayName ?? "Thành viên Q-Dcom",
+        email: userProfile?.email ?? "",
+        avatar: userProfile?.avatar ?? "",
+      }, selectedProducts));
+      setSyncError("");
+    } catch (error) { setSyncError(error instanceof Error ? error.message : "Không thể tạo mã QR."); }
+  }
+  async function acceptScannedQr(raw: string) {
+    try {
+      const payload = parseSharePayload(raw);
+      const ownPeerId = userProfile?.peerId ?? readSaved<string>(PEER_KEY, "");
+      if (payload.peer.peerId === ownPeerId && !payload.products.length) throw new Error("Đây là mã QR của thiết bị hiện tại.");
+      const member: QDcomMember = {
+        peerId: payload.peer.peerId,
+        displayName: payload.peer.displayName,
+        email: payload.peer.email,
+        avatar: payload.peer.avatar.startsWith("https://") ? payload.peer.avatar : "",
+        addedAt: new Date().toISOString(),
+      };
+      await qdcomDB.transaction("rw", qdcomDB.members, qdcomDB.products, async () => {
+        if (payload.peer.peerId !== ownPeerId) await qdcomDB.members.put(member);
+        if (payload.products.length) await qdcomDB.products.bulkPut(payload.products);
+      });
+      setProducts(await listProducts());
+      setMembers(await qdcomDB.members.toArray());
+      setScannerOpen(false);
+      notify(payload.peer.peerId === ownPeerId
+        ? `Đã nhập ${payload.products.length} mẫu hàng từ mã QR.`
+        : payload.products.length
+          ? `Đã kết bạn với ${member.displayName} và tự động đồng bộ dữ liệu mẫu hàng!`
+          : `Đã kết bạn với ${member.displayName}.`);
+    } catch (error) {
+      setScannerOpen(false);
+      notify(error instanceof Error ? error.message : "Không thể xử lý mã QR.");
+    }
+  }
+  async function exportBackup() {
+    try {
+      const [allProducts, storedVocabulary, allMembers] = await Promise.all([qdcomDB.products.toArray(), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()]);
+      const contents = serializeBackup(allProducts, storedVocabulary?.value ?? vocabulary, allMembers);
+      const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Q-Dcom_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      notify("Đã xuất file backup Q-Dcom.");
+    } catch (error) { notify(error instanceof Error ? error.message : "Không thể xuất file backup."); }
+  }
+  async function importBackup(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 25_000_000) { notify("File backup vượt giới hạn 25 MB."); return; }
+    try {
+      const backup = parseBackup(await file.text());
+      await qdcomDB.transaction("rw", qdcomDB.products, qdcomDB.botVocabulary, qdcomDB.members, async () => {
+        await qdcomDB.products.bulkPut(backup.products);
+        await qdcomDB.botVocabulary.put({ id: "main", value: backup.botVocabulary });
+        await qdcomDB.members.bulkPut(backup.members);
+      });
+      setProducts(await listProducts());
+      setVocabulary(backup.botVocabulary);
+      setMembers(await qdcomDB.members.toArray());
+      notify(`Đã nhập ${backup.products.length} mẫu hàng và dữ liệu nhóm Q-Dcom.`);
+    } catch (error) { notify(error instanceof Error ? error.message : "File backup không hợp lệ."); }
   }
   async function addImages(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -198,14 +352,51 @@ export function QDcomApp() {
 
   if (!ready) return <main className="app-frame" style={appStyle}><BackgroundVideo enabled={settings.videoEnabled} tint={settings.videoTint} /><div className="loading-state"><div className="loading-mark"><Boxes /></div>Đang tải dữ liệu kho Q-Dcom…</div></main>;
 
+  if (!userProfile) return <main className={`app-frame login-frame ${authMode === "register" ? "register-mode" : "sign-in-mode"}`} style={appStyle}>
+    <BackgroundVideo enabled={settings.videoEnabled} tint={settings.videoTint} />
+    <div className="login-overlay" />
+    <header className="login-header"><div className="brand"><div className="brand-mark"><Boxes /></div><div><div className="brand-word">Q-<span>Dcom</span></div><div className="brand-caption">Cộng đồng Kết nối</div></div></div><span className="login-secure"><LockKeyhole /> KẾT NỐI AN TOÀN</span></header>
+    <div className="login-shell">
+      <section className="login-card glass" aria-labelledby="login-title">
+        <div className="member-card-badge"><BadgeCheck /><span>THẺ ĐĂNG KÝ THÀNH VIÊN</span></div>
+        <div className="login-card-kicker">Q-DCOM · CỘNG ĐỒNG KẾT NỐI</div>
+        <h1 id="login-title">{authMode === "register" ? "ĐĂNG KÝ TÀI KHOẢN" : "ĐĂNG NHẬP TÀI KHOẢN"}</h1>
+        <p className="login-card-copy">{authMode === "register" ? "Hoàn thiện hồ sơ thành viên để kết nối với cộng đồng Q-Dcom." : "Đăng nhập bằng Google để tiếp tục vào không gian làm việc Q-Dcom."}</p>
+        {authMode === "register" && !registrationDetails && <form className="registration-form" onSubmit={submitRegistration}>
+          <label className="auth-field"><span><IdCard /> MÃ ID THÀNH VIÊN</span><input required value={registrationDraft.memberId} onChange={(event) => updateRegistrationDraft("memberId", event.target.value)} placeholder="Nhập mã ID được cấp" autoComplete="off" /></label>
+          <label className="auth-field"><span><UserRound /> HỌ VÀ TÊN</span><input required value={registrationDraft.fullName} onChange={(event) => updateRegistrationDraft("fullName", event.target.value)} placeholder="Nhập họ tên" autoComplete="name" /></label>
+          <label className="auth-field"><span><KeyRound /> MẬT KHẨU</span><input required type="password" minLength={8} value={registrationDraft.password} onChange={(event) => updateRegistrationDraft("password", event.target.value)} placeholder="Nhập mật khẩu" autoComplete="new-password" /></label>
+          <label className="auth-field"><span><KeyRound /> XÁC NHẬN MẬT KHẨU</span><input required type="password" minLength={8} value={registrationDraft.confirmPassword} onChange={(event) => updateRegistrationDraft("confirmPassword", event.target.value)} placeholder="Nhập xác nhận mật khẩu" autoComplete="new-password" /></label>
+          <label className="auth-field"><span><BriefcaseBusiness /> CHUYÊN NGÀNH</span><input required value={registrationDraft.specialty} onChange={(event) => updateRegistrationDraft("specialty", event.target.value)} placeholder="Nhập chuyên ngành" autoComplete="organization-title" /></label>
+          <label className="auth-field"><span><MapPin /> NƠI LÀM VIỆC</span><select disabled aria-describedby="workplace-help" defaultValue=""><option value="">Sẽ tự động cập nhật từ ID nhân viên</option></select><small id="workplace-help">Chưa có danh mục nhân viên để tra cứu nơi làm việc.</small></label>
+          <p className="auth-password-note"><LockKeyhole /> Mật khẩu chỉ dùng để kiểm tra biểu mẫu, không được lưu hay gửi đi. Đăng nhập thực tế được xác thực bằng Google.</p>
+          <button className="auth-submit" type="submit">ĐĂNG KÝ NGAY <ArrowRight /></button>
+        </form>}
+        {authMode === "register" && registrationDetails && <section className="registration-review" aria-live="polite">
+          <div className="registration-review-title"><CheckCircle2 /><div><strong>Đã nhận thông tin đăng ký</strong><span>Xác thực Google để hoàn tất và vào ứng dụng.</span></div></div>
+          <dl><div><dt>Mã ID thành viên</dt><dd>{registrationDetails.memberId}</dd></div><div><dt>Họ và tên</dt><dd>{registrationDetails.fullName}</dd></div><div><dt>Chuyên ngành</dt><dd>{registrationDetails.specialty}</dd></div></dl>
+          <button className="registration-edit" type="button" onClick={() => setRegistrationDetails(null)}>Chỉnh sửa thông tin</button>
+        </section>}
+        {authMode === "login" && <div className="login-privacy"><LockKeyhole /><span>Tài khoản Google là phương thức xác thực duy nhất hiện được hỗ trợ.</span></div>}
+        <div className="login-divider"><span>{authMode === "register" ? "HOẶC ĐĂNG KÝ NHANH BẰNG" : "HOẶC ĐĂNG NHẬP NHANH BẰNG"}</span></div>
+        {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? <div className="google-login-wrap" ref={googleAuthRef}><span className="google-login-label">{registrationDetails ? "Xác thực để hoàn tất đăng ký" : "Tiếp tục với Google"}</span><div className="google-button-frame"><GoogleLogin onSuccess={(response) => handleGoogleLogin(response.credential)} onError={() => notify("Đăng nhập Google không thành công. Hãy kiểm tra domain được cấp quyền OAuth trong Google Cloud Console.")} text={authMode === "register" ? "signup_with" : "signin_with"} shape="pill" size="large" theme="outline" logo_alignment="left" width={300} /></div><span className="google-login-caption">{registrationDetails ? "Sau khi xác thực thành công, hồ sơ sẽ được lưu trên thiết bị này và ứng dụng sẽ mở." : "Đăng nhập an toàn bằng tài khoản Google của bạn."}</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập NEXT_PUBLIC_GOOGLE_CLIENT_ID và domain OAuth hợp lệ để tiếp tục.</p></div></div>}
+        <button className="auth-mode-toggle" type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); setRegistrationDetails(null); setRegistrationDraft({ memberId: "", fullName: "", password: "", confirmPassword: "", specialty: "" }); }}>
+          {authMode === "register" ? "Đã có tài khoản? Đăng nhập" : "Chưa là thành viên? Đăng ký ngay"}
+        </button>
+      </section>
+    </div>
+    <footer className="login-footer"><span>Q-DCOM · CỘNG ĐỒNG KẾT NỐI</span><span>GOOGLE IDENTITY · HỒ SƠ LƯU CỤC BỘ</span></footer>
+    {toast && <div className="toast" role="status"><CheckCircle2 />{toast}</div>}
+  </main>;
+
   return <main className="app-frame" style={appStyle}>
     <BackgroundVideo enabled={settings.videoEnabled} tint={settings.videoTint} />
     <div className="app-layout">
       <aside className="sidebar glass"><div className="brand"><div className="brand-mark"><Boxes /></div><div><div className="brand-word">Q-<span>Dcom</span></div><div className="brand-caption">Quản lý kho & mẫu hàng</div></div></div><div className="nav-label">Không gian làm việc</div>
         <nav className="nav-stack" aria-label="Điều hướng chính">{pages.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? "active" : ""}`} onClick={() => setPage(id)}><Icon /><span>{label}</span>{id === "inventory" && <span className="nav-count">{activeProducts.length}</span>}</button>)}</nav>
-        <div className="sidebar-spacer" /><div className="warehouse-switch"><div className="warehouse-icon"><MapPin /></div><div><small>Kho đang hoạt động</small><strong>Kho trung tâm · HCM</strong></div></div><div className="profile-row"><div className="avatar">TN</div><div className="profile-copy"><strong>Trần Ngọc</strong><span>Quản lý kho</span></div></div>
+        <div className="sidebar-spacer" /><div className="warehouse-switch"><div className="warehouse-icon"><MapPin /></div><div><small>Kho đang hoạt động</small><strong>Kho trung tâm · HCM</strong></div></div><div className="profile-row"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile?.displayName ?? "Trần Ngọc"}</strong><span>{userProfile?.email ?? "Quản lý kho"}</span></div></div>
       </aside>
-      <section className="main-panel"><header className="topbar glass"><div className="mobile-wordmark">Q-<b>Dcom</b></div><div className="breadcrumb">Không gian kho <ChevronRight size={13} /><strong>{pageNames[page]}</strong></div><div className="topbar-actions"><span className="connection-pill"><i />{settings.useLocalServer ? "Máy chủ kho" : "Kho nội bộ"}</span><span className="topbar-divider" /><div className="avatar">TN</div></div></header>
+      <section className="main-panel"><header className="topbar glass"><div className="mobile-wordmark">Q-<b>Dcom</b></div><div className="breadcrumb">Không gian kho <ChevronRight size={13} /><strong>{pageNames[page]}</strong></div><div className="topbar-actions"><span className="connection-pill"><i />Kho trên thiết bị</span><span className="topbar-divider" /><ProfileAvatar profile={userProfile} /></div></header>
         <div className="main-content">
           {page === "inventory" && <>
             <div className="page-heading"><div><div className="eyebrow"><Activity /> Trung tâm vận hành · Hôm nay</div><h1>Mẫu hàng & kho</h1><p>Theo dõi số lượng, tình trạng và vị trí lưu trữ.</p></div><button className="primary-btn" onClick={() => openEditor()}><Plus /> Thêm mẫu hàng</button></div>
@@ -232,11 +423,12 @@ export function QDcomApp() {
           </>}
 
           {page === "settings" && <>
-            <div className="page-heading"><div><div className="eyebrow"><SlidersHorizontal /> Tùy chỉnh không gian</div><h1>Cài đặt chung</h1><p>Điều chỉnh giao diện, từ vựng trợ lý và nguồn dữ liệu kho.</p></div></div>
+            <div className="page-heading"><div><div className="eyebrow"><SlidersHorizontal /> Tùy chỉnh không gian</div><h1>Cài đặt chung</h1><p>Hồ sơ nhóm, đồng bộ dữ liệu và giao diện kho.</p></div></div>
             <div className="settings-grid">
               <section className="settings-card glass"><SettingsHead icon={<Video />} title="Giao diện & video nền" description="Tệp tùy chọn: public/videos/bg-video.mp4." /><div className="settings-card-body"><SettingSwitch title="Bật video nền" description="Nền tĩnh vẫn hiển thị khi chưa có tệp video." checked={settings.videoEnabled} onClick={() => saveSettings({ ...settings, videoEnabled: !settings.videoEnabled })} /><SettingRange title="Độ mờ kính" value={settings.glassBlur} min={0} max={32} suffix="px" onChange={(value) => saveSettings({ ...settings, glassBlur: value })} /><SettingRange title="Độ trong suốt" value={settings.glassOpacity} min={45} max={95} suffix="%" onChange={(value) => saveSettings({ ...settings, glassOpacity: value })} /><div className="setting-row"><div className="setting-copy"><strong>Màu phủ video</strong><small>Chọn sắc độ phủ nhẹ lên nền.</small></div><input className="tint-input" type="color" value={settings.videoTint} aria-label="Màu phủ video" onChange={(event) => saveSettings({ ...settings, videoTint: event.target.value })} /></div></div></section>
-              <section className="settings-card glass"><SettingsHead icon={<Wifi />} title="Kết nối máy chủ kho" description="PocketBase REST API · máy chủ nội bộ hoặc Termux." /><div className="settings-card-body"><SettingSwitch title="Dùng máy chủ từ xa" description="Tắt để lưu riêng trên trình duyệt này." checked={settings.useLocalServer} onClick={() => saveSettings({ ...settings, useLocalServer: !settings.useLocalServer })} /><div><label className="field-label" htmlFor="server-url">Địa chỉ máy chủ</label><input id="server-url" className="text-field" value={settings.serverUrl} onChange={(event) => saveSettings({ ...settings, serverUrl: event.target.value })} placeholder="http://192.168.1.150:8090" /></div><div className="setting-row"><span className={`connection-status ${connectionState}`}>{connectionState === "ok" ? <CheckCircle2 size={13} /> : connectionState === "error" ? <CircleAlert size={13} /> : <Wifi size={13} />}{connectionText || (settings.useLocalServer ? "Chưa kiểm tra kết nối" : "Đang lưu trên thiết bị")}</span><button className="primary-btn" disabled={busy} onClick={() => void testConnection()}>{busy ? "Đang kiểm tra…" : "Lưu & kiểm tra"}</button></div></div></section>
-              <section className="settings-card glass wide"><SettingsHead icon={<Bot />} title="Kho từ vựng Bot @q" description="Thêm từ đồng nghĩa, từ lóng hoặc cách nói tự nhiên để bot nhận diện đúng ý định." /><div className="settings-card-body"><form className="vocabulary-form" onSubmit={addWord}><input className="text-field" value={newWord} onChange={(event) => setNewWord(event.target.value)} placeholder="Nhập từ hoặc cụm từ mới…" aria-label="Từ mới" /><select className="select-field" value={newIntent} onChange={(event) => setNewIntent(event.target.value as Exclude<BotIntent,"SEARCH">)} aria-label="Nhóm ý định"><option value="CHECK_QUANTITY">Hỏi số lượng</option><option value="CHECK_LOCATION">Hỏi vị trí</option><option value="GREETING">Chào hỏi</option></select><button className="primary-btn"><Plus /> Thêm từ</button></form>
+              <section className="settings-card glass"><SettingsHead icon={<Users />} title="Tài khoản Google & hồ sơ" description="Hồ sơ được lưu trên thiết bị và chia sẻ qua mã QR." /><div className="settings-card-body">{userProfile ? <><div className="google-profile"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile.displayName}</strong><span>{userProfile.email}</span></div></div><button type="button" className="secondary-btn" onClick={logoutGoogle}><LogOut /> Đăng xuất Google</button></> : process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? <GoogleLogin onSuccess={(response) => handleGoogleLogin(response.credential)} onError={() => notify("Đăng nhập Google không thành công.")} /> : <p className="aside-note">Thêm NEXT_PUBLIC_GOOGLE_CLIENT_ID vào môi trường triển khai để bật đăng nhập Google.</p>}</div></section>
+              <section className="settings-card glass wide"><SettingsHead icon={<QrCode />} title="Trung tâm Đồng bộ & Thành viên Q-Dcom" description="Kết bạn và chuyển mẫu hàng trực tiếp bằng QR; backup đầy đủ bằng file JSON." /><div className="settings-card-body"><div className="sync-actions"><button type="button" className="primary-btn" onClick={openShareDialog}><QrCode /> Tạo mã QR chia sẻ</button><button type="button" className="secondary-btn" onClick={() => { setSyncError(""); setScannerOpen(true); }}><Camera /> Mở Camera Quét QR</button><button type="button" className="secondary-btn" onClick={() => void exportBackup()}><Download /> Xuất File Backup</button><button type="button" className="secondary-btn" onClick={() => backupInput.current?.click()}><Upload /> Nhập File Backup</button><input ref={backupInput} type="file" accept="application/json,.json" hidden onChange={(event) => void importBackup(event)} /></div><div><div className="field-label">Thành viên nhóm Q-Dcom · {members.length}</div>{members.length ? <div className="members-list">{members.map((member) => <div className="member-row" key={member.peerId}><MemberAvatar member={member} /><span className="member-copy"><strong>{member.displayName}</strong><small>{member.email || "Thành viên Q-Dcom"}</small></span><small className="member-date">{new Date(member.addedAt).toLocaleDateString("vi-VN")}</small></div>)}</div> : <p className="aside-note">Chưa có thành viên. Quét mã QR của một thành viên để thêm vào danh sách.</p>}</div></div></section>
+              <section className="settings-card glass wide"><SettingsHead icon={<Bot />} title="Kho từ vựng Bot @q" description="Nạp từ mới: nhập từ/cụm từ, chọn nhóm ý định rồi nhấn Thêm từ." /><div className="settings-card-body"><form className="vocabulary-form" onSubmit={addWord}><input className="text-field" value={newWord} onChange={(event) => setNewWord(event.target.value)} placeholder="Nhập từ hoặc cụm từ mới…" aria-label="Từ mới" /><select className="select-field" value={newIntent} onChange={(event) => setNewIntent(event.target.value as Exclude<BotIntent,"SEARCH">)} aria-label="Nhóm ý định"><option value="CHECK_QUANTITY">Hỏi số lượng</option><option value="CHECK_LOCATION">Hỏi vị trí</option><option value="GREETING">Chào hỏi</option></select><button className="primary-btn"><Plus /> Thêm từ</button></form>
                 <div className="vocabulary-groups">{(["CHECK_QUANTITY","CHECK_LOCATION","GREETING"] as const).map((intent) => <div key={intent}><div className="field-label">{{CHECK_QUANTITY:"Tra cứu số lượng",CHECK_LOCATION:"Tra cứu vị trí",GREETING:"Lời chào"}[intent]}</div><div className="vocabulary-chips">{vocabulary.intents[intent].map((word) => <span className="vocabulary-chip" key={word}>{word}<button type="button" aria-label={`Xóa ${word}`} onClick={() => removeWord(intent,word)}><X /></button></span>)}</div></div>)}</div>
                 <ResponseEditor label="Câu chào của bot" values={vocabulary.responses.GREETING} onChange={(values) => storeVocabulary({ ...vocabulary, responses: { ...vocabulary.responses, GREETING: values } })} /><ResponseEditor label="Khi không tìm thấy" values={vocabulary.responses.NOT_FOUND} onChange={(values) => storeVocabulary({ ...vocabulary, responses: { ...vocabulary.responses, NOT_FOUND: values } })} />
               </div></section>
@@ -264,10 +456,18 @@ export function QDcomApp() {
       <TextInput label="Từ khóa bot có thể học" value={draft.search_keywords.join(", ")} setValue={(value) => setDraft({ ...draft, search_keywords:value.split(",") })} placeholder="tên gọi khác, từ lóng, mã lô…" />
       <div className="modal-footer">{editingId && <button type="button" className="quiet-btn delete-btn" onClick={() => { const product = products.find((item) => item.id === editingId); if (product) void removeProduct(product); }}><Trash2 /> Xóa mẫu</button>}<div className="modal-footer-end"><button type="button" className="secondary-btn" onClick={() => setEditorOpen(false)}>Hủy</button><button className="primary-btn" disabled={busy}>{busy ? "Đang lưu…" : <><Check /> Lưu mẫu hàng</>}</button></div></div>
     </form></section></div>}
+    {shareOpen && <div className="modal-backdrop" onClick={(event) => event.target === event.currentTarget && setShareOpen(false)}><section className="sync-modal glass" role="dialog" aria-modal="true" aria-label="Tạo mã QR chia sẻ"><div className="modal-head"><h2>Tạo mã QR chia sẻ Q-Dcom</h2><button className="modal-close" aria-label="Đóng" onClick={() => setShareOpen(false)}><X /></button></div><div className="sync-modal-body">{shareValue ? <div className="share-result"><QRCodeSVG value={shareValue} size={256} level="L" includeMargin /><p>{JSON.parse(shareValue).products.length} mẫu hàng · hồ sơ {userProfile?.displayName ?? "Thành viên Q-Dcom"}</p><button type="button" className="secondary-btn" onClick={() => setShareValue("")}>Chọn lại dữ liệu</button></div> : <><p className="aside-note">Mã QR luôn chứa Peer ID và hồ sơ; đánh dấu mẫu hàng muốn chuyển cùng mã. Nội dung có giới hạn dung lượng để máy ảnh đọc ổn định.</p><div className="share-product-list">{products.map((product) => <label className="share-product" key={product.id}><input type="checkbox" checked={shareSelection.includes(product.id)} onChange={(event) => { setShareSelection((items) => event.target.checked ? [...items, product.id] : items.filter((id) => id !== product.id)); setShareValue(""); setSyncError(""); }} /><span><strong>{product.name}</strong><small>{product.id} · {product.brand} · {product.quantity} còn</small></span></label>)}</div><div className="form-help">Chia sẻ {shareSelection.length} / {products.length} mẫu. Ảnh tải lên trực tiếp được bỏ khỏi QR để tránh vượt dung lượng.</div><div className="modal-footer-end"><button type="button" className="primary-btn" onClick={createShareQr}><QrCode /> Tạo mã QR</button></div></>}{syncError && <p className="connection-status error">{syncError}</p>}</div></section></div>}
+    {scannerOpen && <div className="modal-backdrop" onClick={(event) => event.target === event.currentTarget && setScannerOpen(false)}><section className="sync-modal scanner-modal glass" role="dialog" aria-modal="true" aria-label="Quét mã QR"><div className="modal-head"><h2>Kết bạn & nhận mẫu hàng</h2><button className="modal-close" aria-label="Đóng camera" onClick={() => setScannerOpen(false)}><X /></button></div><div className="sync-modal-body"><p className="aside-note">Cho phép truy cập camera để quét mã QR của thành viên Q-Dcom.</p><QrCameraScanner onScan={(value) => void acceptScannedQr(value)} onError={(message) => setSyncError(message)} />{syncError && <p className="connection-status error">{syncError}</p>}</div></section></div>}
     {toast && <div className="toast" role="status"><CheckCircle2 />{toast}</div>}
   </main>;
 }
 
+function ProfileAvatar({ profile }: { profile: GoogleProfile | null }) {
+  return <div className="avatar">{profile?.avatar ? <Image src={profile.avatar} alt="" fill unoptimized sizes="31px" /> : profile?.displayName.slice(0, 2).toUpperCase() ?? "TN"}</div>;
+}
+function MemberAvatar({ member }: { member: QDcomMember }) {
+  return <div className="avatar">{member.avatar ? <Image src={member.avatar} alt="" fill unoptimized sizes="31px" /> : member.displayName.slice(0, 2).toUpperCase()}</div>;
+}
 function StatCard({ label,value,foot,icon }: { label:string; value:string; foot:string; icon:ReactNode }) { return <div className="stat-card glass"><div className="stat-top">{label}<span className="stat-icon">{icon}</span></div><div className="stat-value">{value}</div><div className="stat-foot">{foot}</div></div>; }
 function SettingsHead({ icon,title,description }: { icon:ReactNode; title:string; description:string }) { return <div className="settings-card-head"><span className="settings-card-icon">{icon}</span><div><h2>{title}</h2><p>{description}</p></div></div>; }
 function SettingSwitch({ title,description,checked,onClick }: { title:string; description:string; checked:boolean; onClick:()=>void }) { return <div className="setting-row"><div className="setting-copy"><strong>{title}</strong><small>{description}</small></div><button type="button" className={`switch ${checked?"on":""}`} role="switch" aria-checked={checked} aria-label={title} onClick={onClick} /></div>; }

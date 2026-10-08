@@ -17,5 +17,4 @@ export interface Product {
   created_at: string;
   updated_at: string;
   search_keywords: string[];
-  remote_record_id?: string;
 }

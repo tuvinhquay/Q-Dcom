@@ -87,3 +87,40 @@
 - Xác nhận `origin` là `https://github.com/tuvinhquay/Q-Dcom`, nhánh `main` đang theo dõi origin; ban đầu chỉ có commit `Initial commit`, không có thay đổi staged hay commit người dùng nào cần giữ.
 - Tiếp theo chạy lint, typecheck, production build và `git diff --check`; sau đó stage toàn bộ, commit đúng thông điệp người dùng yêu cầu và push `main`.
 - Deploy Vercel/PocketBase thực tế cần cài biến môi trường và máy chủ/collection hợp lệ; push thành công chỉ xác nhận GitHub đã nhận mã nguồn, không thay cho kiểm tra build trong Vercel.
+
+## Phiên 2026-10-06 · Nâng cấp Local-First PWA, Google OAuth & QR 2-in-1
+
+### Thay đổi
+
+- Chuyển danh mục sản phẩm sang Dexie/IndexedDB `QDcom_Offline_DB` với đúng ba bảng `products`, `botVocabulary`, `members`; seed dữ liệu khởi tạo một lần và nhập sản phẩm/từ vựng localStorage cũ khi khởi tạo DB.
+- Thay toàn bộ `productService` bằng thao tác IndexedDB; cập nhật tồn kho theo transaction và loại bỏ model/cấu hình PocketBase, Cloudflare Tunnel cũ.
+- Thêm manifest, viewport/theme color, icon SVG maskable và service worker cache app shell/tài nguyên tĩnh cùng origin cho lần tải ngoại tuyến sau.
+- Tích hợp Google OAuth bằng `@react-oauth/google`; profile/avatar lưu trong `qdcom.user_profile.v1`, dùng chung ở sidebar/header và có nút đăng xuất.
+- Thêm QR JSON phiên bản 1 gồm peer profile và sản phẩm tùy chọn, kiểm tra schema trước khi nhận, camera scan bằng `html5-qrcode`, lưu member/sản phẩm theo transaction.
+- Thêm backup JSON sản phẩm/từ vựng/thành viên, kiểm tra file tối đa 25 MB và merge theo ID; backup giữ ảnh tải lên, QR bỏ ảnh data URL do giới hạn dung lượng.
+- Cập nhật README, `.env.example` và hướng dẫn nạp từ vựng Bot @q trong Cài đặt.
+
+### File tạo/sửa/xóa
+
+- Tạo: `components/google-auth-provider.tsx`, `components/qr-camera-scanner.tsx`, `lib/db/qdcomDB.ts`, `lib/sync/qdcomSync.ts`, `public/manifest.json`, `public/sw.js`, `public/icons/icon-192.svg`, `public/icons/icon-512.svg`.
+- Sửa: `package.json`, `package-lock.json`, `app/layout.tsx`, `app/globals.css`, `components/qdcom-app.tsx`, `lib/services/productService.ts`, `types/product.ts`, `.env.example`, `README.md`, `SESSION_LOG.md`.
+- Xóa: `config/app.config.ts`, `lib/services/cloudflareTunnel.ts`.
+- Dependencies cài mới: `dexie`, `dexie-react-hooks`, `qrcode.react`, `html5-qrcode`, `@react-oauth/google`.
+
+### Cấu hình và giới hạn vận hành
+
+- Google Login chỉ hoạt động sau khi khai báo `NEXT_PUBLIC_GOOGLE_CLIENT_ID` từ Google Cloud Console và cho phép origin hiện tại; mã nguồn không thể tự tạo OAuth Client ID.
+- Camera và cài PWA yêu cầu HTTPS hoặc localhost. Service worker cache sau lần tải trực tuyến đầu tiên; dữ liệu kho dùng IndexedDB cục bộ.
+- QR chia sẻ là chuyển dữ liệu trực tiếp, không phải đồng bộ thời gian thực và thông tin hồ sơ trong QR không được máy chủ xác thực. Dùng backup JSON để chuyển lượng dữ liệu lớn.
+- `npm install` hoàn tất nhưng npm báo 5 lỗ hổng mức high trong dependency tree; không chạy `npm audit fix --force` để tránh nâng cấp phá vỡ ngoài phạm vi.
+
+### Kiểm tra và bàn giao
+
+- `npx tsc --noEmit`: thành công sau các thay đổi mã cuối.
+- `npm run lint`: thành công trước hai chỉnh sửa nhỏ cuối ở validator/Blob URL; lần chạy xác nhận lại đã được bỏ qua.
+- `npm run build`: chưa chạy vì lệnh xác nhận production build được bỏ qua.
+- Thêm cổng đăng nhập glassmorphism dùng video nền sẵn có; dashboard không render khi chưa có hồ sơ hợp lệ. Google Sign-In lần đầu tạo hồ sơ cục bộ, đăng xuất quay về màn hình xác thực; localStorage profile được kiểm tra kiểu trước khi mở app.
+- Cập nhật README mô tả cổng đăng nhập và việc tạo hồ sơ tự động qua Google; trạng thái workspace hiện chưa có `NEXT_PUBLIC_GOOGLE_CLIENT_ID` nên màn đăng nhập hiển thị hướng dẫn cấu hình, không cho vào dashboard.
+- File phiên này bổ sung: `app/globals.css`, `components/qdcom-app.tsx`, `README.md`, `SESSION_LOG.md`.
+- Typecheck và lint đã chạy thành công sau khi thêm cổng đăng nhập; dev server có sẵn trả HTTP 200 trên `http://localhost:3000`. Production build vẫn chưa chạy do lệnh trước đó đã bị bỏ qua.
+- Bàn giao tiếp: cấu hình Google Client ID/origin, chạy production build, thử cài PWA sau lần truy cập HTTPS đầu tiên, kiểm thử hai thiết bị quét QR và xác nhận round-trip backup có ảnh.
