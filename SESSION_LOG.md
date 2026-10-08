@@ -1,5 +1,23 @@
 # Nhật ký phát triển Q-Dcom
 
+## Phiên 2026-10-08 · Đăng ký bằng ID và kính mờ
+
+### Thay đổi
+
+- Cho phép đăng ký hồ sơ bằng mã ID, họ tên, chuyên ngành và ảnh đại diện tùy chọn; ảnh giới hạn 700 KB, lưu dạng data URL trong localStorage.
+- Sau khi bấm `ĐĂNG KÝ NGAY`, hồ sơ được lưu vào `qdcom.local_members.v1` và `qdcom.user_profile.v1`, sau đó vào dashboard ngay mà không cần Google OAuth.
+- Bổ sung đăng nhập lại bằng ID thành viên trên cùng thiết bị. Đăng xuất chỉ xóa hồ sơ đang hoạt động, giữ danh sách thành viên cục bộ để lần sau đăng nhập; Google Login tiếp tục là lựa chọn riêng.
+- Chuyển thẻ đăng ký sang glassmorphism nền `rgba(15, 23, 42, 0.6)`, blur 20 px, viền sáng, bóng đổ theo yêu cầu và quầng sáng gradient phía sau.
+- Tách video nền đăng nhập `/videos/login-bg-video.mp4` khỏi video nền ứng dụng `/videos/app-bg-video.mp4`; ghi rõ vị trí để người dùng tự thêm video.
+- Cập nhật README, hướng dẫn đăng ký và `public/videos/README.md`.
+
+### Giới hạn và kiểm tra
+
+- Hồ sơ ID chỉ nằm trên trình duyệt/thiết bị, không có máy chủ xác thực; ID local không phải cơ chế bảo vệ dữ liệu an toàn.
+- Thư mục video mới chỉ khai báo tên/đường dẫn tệp. Không có MP4 demo đi kèm; giao diện dùng nền đồ họa tĩnh cho đến khi bổ sung video.
+- `npm run lint`, `npx tsc --noEmit` và `git diff --check`: thành công.
+- Đã chạy `npm run dev`; `curl http://localhost:3000/` trả HTTP 200 và trang có đúng tiêu đề Q-Dcom.
+
 ## Phiên 2026-09-30
 
 ### Phạm vi

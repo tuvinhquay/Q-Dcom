@@ -5,7 +5,7 @@ import {
   Camera, CircleAlert, Download, ImagePlus, LayoutDashboard, LockKeyhole, LogOut,
   MapPin, MessageCircle, Package, Paperclip, Pencil, Plus, QrCode, Search, Send,
   Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sparkles, Trash2,
-  Upload, Users, Video, X, IdCard, UserRound, KeyRound, BriefcaseBusiness,
+  Upload, Users, Video, X, IdCard, UserRound, BriefcaseBusiness,
 } from "lucide-react";
 import Image from "next/image";
 import type { ChangeEvent, CSSProperties, FormEvent, ReactNode } from "react";
@@ -27,13 +27,13 @@ import type { Product, ProductStatus } from "@/types/product";
 type PageKey = "inventory" | "bot" | "reports" | "settings";
 type ChatMessage = { id: number; role: "user" | "assistant"; text: string; productIds?: string[] };
 type Settings = { videoEnabled: boolean; glassBlur: number; glassOpacity: number; videoTint: string };
-type GoogleProfile = { peerId: string; googleSub: string; displayName: string; email: string; avatar: string; memberId?: string; specialty?: string };
-type RegistrationDetails = { memberId: string; fullName: string; specialty: string };
+type UserProfile = { peerId: string; googleSub?: string; displayName: string; email: string; avatar: string; memberId?: string; specialty?: string };
 type ProductDraft = Omit<Product, "created_at" | "updated_at">;
 const SETTINGS_KEY = "qdcom.settings.v1";
 const VOCABULARY_KEY = "qdcom.bot-vocabulary.v1";
 const CHAT_KEY = "qdcom.chat.v1";
 const PROFILE_KEY = "qdcom.user_profile.v1";
+const LOCAL_MEMBERS_KEY = "qdcom.local_members.v1";
 const PEER_KEY = "qdcom.peer_id.v1";
 const defaults: Settings = { videoEnabled: true, glassBlur: 18, glassOpacity: 74, videoTint: "#2563eb" };
 const pages: { id: PageKey; label: string; icon: typeof Package }[] = [
@@ -49,12 +49,19 @@ function readSaved<T>(key: string, fallback: T): T {
   try { const value = window.localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; }
   catch { return fallback; }
 }
-function readGoogleProfile(): GoogleProfile | null {
-  const profile = readSaved<Partial<GoogleProfile> | null>(PROFILE_KEY, null);
-  return profile && typeof profile.peerId === "string" && typeof profile.googleSub === "string" &&
+function readUserProfile(): UserProfile | null {
+  const profile = readSaved<Partial<UserProfile> | null>(PROFILE_KEY, null);
+  return profile && typeof profile.peerId === "string" &&
     typeof profile.displayName === "string" && typeof profile.email === "string" && typeof profile.avatar === "string"
-    ? profile as GoogleProfile
+    ? profile as UserProfile
     : null;
+}
+function readLocalMembers(): UserProfile[] {
+  const members = readSaved<Partial<UserProfile>[]>(LOCAL_MEMBERS_KEY, []);
+  return Array.isArray(members) ? members.filter((profile): profile is UserProfile =>
+    typeof profile.peerId === "string" && typeof profile.memberId === "string" &&
+    typeof profile.displayName === "string" && typeof profile.specialty === "string" &&
+    typeof profile.email === "string" && typeof profile.avatar === "string") : [];
 }
 function stockStatus(quantity: number): ProductStatus { return quantity <= 0 ? "out_of_stock" : quantity <= 4 ? "low_stock" : "available"; }
 function newId() { return `qd${Math.random().toString(36).slice(2, 8)}`; }
@@ -76,10 +83,10 @@ function Badge({ status }: { status: ProductStatus }) {
 export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
-  const [userProfile, setUserProfile] = useState<GoogleProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
-  const [registrationDetails, setRegistrationDetails] = useState<RegistrationDetails | null>(null);
-  const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", password: "", confirmPassword: "", specialty: "" });
+  const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
+  const [localLoginId, setLocalLoginId] = useState("");
   const [members, setMembers] = useState<QDcomMember[]>([]);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [vocabulary, setVocabulary] = useState<BotVocabulary>(copyDefaultVocabulary());
@@ -114,7 +121,7 @@ export function QDcomApp() {
     const savedMessages = readSaved<ChatMessage[]>(CHAT_KEY, []);
     startTransition(() => {
       setSettings(savedSettings);
-      setUserProfile(readGoogleProfile());
+      setUserProfile(readUserProfile());
       setMessages(savedMessages.length ? savedMessages : [{ id: Date.now(), role: "assistant", text: "Chào bạn! Mình là Q-Dcom Bot. Nhập mã mẫu, tên hàng hoặc vị trí kệ để bắt đầu tra cứu." }]);
     });
     void Promise.all([listProducts(), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()])
@@ -133,9 +140,6 @@ export function QDcomApp() {
     messageEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
-  useEffect(() => {
-    if (registrationDetails) googleAuthRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [registrationDetails]);
   useEffect(() => {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
   }, []);
@@ -219,18 +223,16 @@ export function QDcomApp() {
       if (typeof claims.sub !== "string" || typeof claims.email !== "string" || claims.email_verified !== true) throw new Error("Hồ sơ Google chưa xác minh email.");
       const peerId = readSaved<string>(PEER_KEY, "") || (window.crypto.randomUUID?.() ?? `qd-${Date.now()}-${Math.random().toString(36).slice(2)}`);
       window.localStorage.setItem(PEER_KEY, peerId);
-      const profile: GoogleProfile = {
+      const profile: UserProfile = {
         peerId,
         googleSub: claims.sub,
-        displayName: registrationDetails?.fullName || (typeof claims.name === "string" ? claims.name : claims.email),
+        displayName: typeof claims.name === "string" ? claims.name : claims.email,
         email: claims.email,
         avatar: typeof claims.picture === "string" && claims.picture.startsWith("https://") ? claims.picture : "",
-        ...(registrationDetails ? { memberId: registrationDetails.memberId, specialty: registrationDetails.specialty } : {}),
       };
       window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
       setUserProfile(profile);
-      setRegistrationDetails(null);
-      notify(registrationDetails ? `Đã đăng ký hồ sơ Q-Dcom: ${profile.displayName}.` : `Đã đăng nhập Google: ${profile.displayName}.`);
+      notify(`Đã đăng nhập Google: ${profile.displayName}.`);
     } catch (error) { notify(error instanceof Error ? error.message : "Không thể đọc hồ sơ Google."); }
   }
   function submitRegistration(event: FormEvent<HTMLFormElement>) {
@@ -239,24 +241,73 @@ export function QDcomApp() {
       notify("Vui lòng nhập đầy đủ ID thành viên, họ tên và chuyên ngành.");
       return;
     }
-    if (registrationDraft.password.length < 8) { notify("Mật khẩu cần có ít nhất 8 ký tự."); return; }
-    if (registrationDraft.password !== registrationDraft.confirmPassword) { notify("Mật khẩu xác nhận không khớp."); return; }
-    setRegistrationDetails({
-      memberId: registrationDraft.memberId.trim(),
-      fullName: registrationDraft.fullName.trim(),
-      specialty: registrationDraft.specialty.trim(),
-    });
-    setRegistrationDraft((draft) => ({ ...draft, password: "", confirmPassword: "" }));
-    notify("Thông tin đã sẵn sàng. Tiếp tục với Google để hoàn tất đăng ký.");
+    const memberId = registrationDraft.memberId.trim();
+    const members = readLocalMembers();
+    if (members.some((member) => member.memberId?.toLocaleLowerCase("vi") === memberId.toLocaleLowerCase("vi"))) {
+      notify("Mã ID này đã đăng ký trên thiết bị. Hãy đăng nhập bằng ID hoặc dùng mã khác.");
+      return;
+    }
+    try {
+      const peerId = readSaved<string>(PEER_KEY, "") || (window.crypto.randomUUID?.() ?? `qd-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const profile: UserProfile = {
+        peerId,
+        displayName: registrationDraft.fullName.trim(),
+        email: "",
+        avatar: registrationDraft.avatar,
+        memberId,
+        specialty: registrationDraft.specialty.trim(),
+      };
+      window.localStorage.setItem(PEER_KEY, peerId);
+      window.localStorage.setItem(LOCAL_MEMBERS_KEY, JSON.stringify([...members, profile]));
+      window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      setUserProfile(profile);
+      notify(`Đã đăng ký và đăng nhập: ${profile.displayName}.`);
+    } catch (error) {
+      notify(error instanceof Error ? `Không thể lưu hồ sơ trên thiết bị: ${error.message}` : "Không thể lưu hồ sơ trên thiết bị.");
+    }
   }
   function updateRegistrationDraft(field: keyof typeof registrationDraft, value: string) {
     setRegistrationDraft((draft) => ({ ...draft, [field]: value }));
-    setRegistrationDetails(null);
   }
-  function logoutGoogle() {
+  function submitLocalLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const memberId = localLoginId.trim().toLocaleLowerCase("vi");
+    const profile = readLocalMembers().find((member) => member.memberId?.toLocaleLowerCase("vi") === memberId);
+    if (!profile) {
+      notify("Không tìm thấy ID đã đăng ký trên thiết bị này. Hãy đăng ký hoặc đăng nhập bằng Google.");
+      return;
+    }
+    try {
+      window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      setUserProfile(profile);
+      setLocalLoginId("");
+      notify(`Chào mừng ${profile.displayName} quay lại.`);
+    } catch (error) {
+      notify(error instanceof Error ? `Không thể mở hồ sơ trên thiết bị: ${error.message}` : "Không thể mở hồ sơ trên thiết bị.");
+    }
+  }
+  async function selectRegistrationAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { notify("Vui lòng chọn tệp ảnh."); return; }
+    if (file.size > 700_000) { notify("Ảnh đại diện phải nhỏ hơn 700 KB để lưu trên thiết bị."); return; }
+    try {
+      const avatar = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Không đọc được dữ liệu ảnh."));
+        reader.onerror = () => reject(new Error("Không đọc được tệp ảnh này."));
+        reader.readAsDataURL(file);
+      });
+      setRegistrationDraft((draft) => ({ ...draft, avatar }));
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Không đọc được tệp ảnh này.");
+    }
+  }
+  function logoutProfile() {
     window.localStorage.removeItem(PROFILE_KEY);
     setUserProfile(null);
-    notify("Đã đăng xuất Google trên thiết bị này.");
+    notify("Đã đăng xuất khỏi thiết bị này.");
   }
   function openShareDialog() {
     setShareSelection([]);
@@ -353,7 +404,7 @@ export function QDcomApp() {
   if (!ready) return <main className="app-frame" style={appStyle}><BackgroundVideo enabled={settings.videoEnabled} tint={settings.videoTint} /><div className="loading-state"><div className="loading-mark"><Boxes /></div>Đang tải dữ liệu kho Q-Dcom…</div></main>;
 
   if (!userProfile) return <main className={`app-frame login-frame ${authMode === "register" ? "register-mode" : "sign-in-mode"}`} style={appStyle}>
-    <BackgroundVideo enabled={settings.videoEnabled} tint={settings.videoTint} />
+    <BackgroundVideo enabled={settings.videoEnabled} tint={settings.videoTint} variant="login" />
     <div className="login-overlay" />
     <header className="login-header"><div className="brand"><div className="brand-mark"><Boxes /></div><div><div className="brand-word">Q-<span>Dcom</span></div><div className="brand-caption">Cộng đồng Kết nối</div></div></div><span className="login-secure"><LockKeyhole /> KẾT NỐI AN TOÀN</span></header>
     <div className="login-shell">
@@ -361,31 +412,27 @@ export function QDcomApp() {
         <div className="member-card-badge"><BadgeCheck /><span>THẺ ĐĂNG KÝ THÀNH VIÊN</span></div>
         <div className="login-card-kicker">Q-DCOM · CỘNG ĐỒNG KẾT NỐI</div>
         <h1 id="login-title">{authMode === "register" ? "ĐĂNG KÝ TÀI KHOẢN" : "ĐĂNG NHẬP TÀI KHOẢN"}</h1>
-        <p className="login-card-copy">{authMode === "register" ? "Hoàn thiện hồ sơ thành viên để kết nối với cộng đồng Q-Dcom." : "Đăng nhập bằng Google để tiếp tục vào không gian làm việc Q-Dcom."}</p>
-        {authMode === "register" && !registrationDetails && <form className="registration-form" onSubmit={submitRegistration}>
+        <p className="login-card-copy">{authMode === "register" ? "Hoàn thiện hồ sơ thành viên để kết nối với cộng đồng Q-Dcom." : "Đăng nhập bằng ID đã đăng ký trên thiết bị hoặc tiếp tục với Google."}</p>
+        {authMode === "register" && <form className="registration-form" onSubmit={submitRegistration}>
           <label className="auth-field"><span><IdCard /> MÃ ID THÀNH VIÊN</span><input required value={registrationDraft.memberId} onChange={(event) => updateRegistrationDraft("memberId", event.target.value)} placeholder="Nhập mã ID được cấp" autoComplete="off" /></label>
           <label className="auth-field"><span><UserRound /> HỌ VÀ TÊN</span><input required value={registrationDraft.fullName} onChange={(event) => updateRegistrationDraft("fullName", event.target.value)} placeholder="Nhập họ tên" autoComplete="name" /></label>
-          <label className="auth-field"><span><KeyRound /> MẬT KHẨU</span><input required type="password" minLength={8} value={registrationDraft.password} onChange={(event) => updateRegistrationDraft("password", event.target.value)} placeholder="Nhập mật khẩu" autoComplete="new-password" /></label>
-          <label className="auth-field"><span><KeyRound /> XÁC NHẬN MẬT KHẨU</span><input required type="password" minLength={8} value={registrationDraft.confirmPassword} onChange={(event) => updateRegistrationDraft("confirmPassword", event.target.value)} placeholder="Nhập xác nhận mật khẩu" autoComplete="new-password" /></label>
           <label className="auth-field"><span><BriefcaseBusiness /> CHUYÊN NGÀNH</span><input required value={registrationDraft.specialty} onChange={(event) => updateRegistrationDraft("specialty", event.target.value)} placeholder="Nhập chuyên ngành" autoComplete="organization-title" /></label>
-          <label className="auth-field"><span><MapPin /> NƠI LÀM VIỆC</span><select disabled aria-describedby="workplace-help" defaultValue=""><option value="">Sẽ tự động cập nhật từ ID nhân viên</option></select><small id="workplace-help">Chưa có danh mục nhân viên để tra cứu nơi làm việc.</small></label>
-          <p className="auth-password-note"><LockKeyhole /> Mật khẩu chỉ dùng để kiểm tra biểu mẫu, không được lưu hay gửi đi. Đăng nhập thực tế được xác thực bằng Google.</p>
+          <label className="auth-avatar-upload"><span className="auth-avatar-preview">{registrationDraft.avatar ? <Image src={registrationDraft.avatar} alt="Ảnh đại diện xem trước" fill unoptimized sizes="54px" /> : <UserRound />}</span><span className="auth-avatar-copy"><strong>ẢNH ĐẠI DIỆN <small>(TÙY CHỌN)</small></strong><small>Chọn ảnh cá nhân, tối đa 700 KB.</small></span><span className="auth-avatar-action"><ImagePlus />{registrationDraft.avatar ? "Đổi ảnh" : "Tải ảnh lên"}</span><input type="file" accept="image/*" onChange={(event) => void selectRegistrationAvatar(event)} /></label>
           <button className="auth-submit" type="submit">ĐĂNG KÝ NGAY <ArrowRight /></button>
         </form>}
-        {authMode === "register" && registrationDetails && <section className="registration-review" aria-live="polite">
-          <div className="registration-review-title"><CheckCircle2 /><div><strong>Đã nhận thông tin đăng ký</strong><span>Xác thực Google để hoàn tất và vào ứng dụng.</span></div></div>
-          <dl><div><dt>Mã ID thành viên</dt><dd>{registrationDetails.memberId}</dd></div><div><dt>Họ và tên</dt><dd>{registrationDetails.fullName}</dd></div><div><dt>Chuyên ngành</dt><dd>{registrationDetails.specialty}</dd></div></dl>
-          <button className="registration-edit" type="button" onClick={() => setRegistrationDetails(null)}>Chỉnh sửa thông tin</button>
-        </section>}
-        {authMode === "login" && <div className="login-privacy"><LockKeyhole /><span>Tài khoản Google là phương thức xác thực duy nhất hiện được hỗ trợ.</span></div>}
+        {authMode === "login" && <form className="registration-form local-login-form" onSubmit={submitLocalLogin}>
+          <label className="auth-field"><span><IdCard /> MÃ ID THÀNH VIÊN</span><input required value={localLoginId} onChange={(event) => setLocalLoginId(event.target.value)} placeholder="Nhập ID đã đăng ký trên thiết bị này" autoComplete="username" /></label>
+          <button className="auth-submit" type="submit">XÁC NHẬN <ArrowRight /></button>
+          <p className="local-login-note"><LockKeyhole /> Hồ sơ ID được lưu trên thiết bị này; bạn vẫn có thể đăng nhập riêng bằng Google.</p>
+        </form>}
         <div className="login-divider"><span>{authMode === "register" ? "HOẶC ĐĂNG KÝ NHANH BẰNG" : "HOẶC ĐĂNG NHẬP NHANH BẰNG"}</span></div>
-        {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? <div className="google-login-wrap" ref={googleAuthRef}><span className="google-login-label">{registrationDetails ? "Xác thực để hoàn tất đăng ký" : "Tiếp tục với Google"}</span><div className="google-button-frame"><GoogleLogin onSuccess={(response) => handleGoogleLogin(response.credential)} onError={() => notify("Đăng nhập Google không thành công. Hãy kiểm tra domain được cấp quyền OAuth trong Google Cloud Console.")} text={authMode === "register" ? "signup_with" : "signin_with"} shape="pill" size="large" theme="outline" logo_alignment="left" width={300} /></div><span className="google-login-caption">{registrationDetails ? "Sau khi xác thực thành công, hồ sơ sẽ được lưu trên thiết bị này và ứng dụng sẽ mở." : "Đăng nhập an toàn bằng tài khoản Google của bạn."}</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập NEXT_PUBLIC_GOOGLE_CLIENT_ID và domain OAuth hợp lệ để tiếp tục.</p></div></div>}
-        <button className="auth-mode-toggle" type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); setRegistrationDetails(null); setRegistrationDraft({ memberId: "", fullName: "", password: "", confirmPassword: "", specialty: "" }); }}>
+        {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? <div className="google-login-wrap" ref={googleAuthRef}><span className="google-login-label">Tiếp tục với Google</span><div className="google-button-frame"><GoogleLogin onSuccess={(response) => handleGoogleLogin(response.credential)} onError={() => notify("Đăng nhập Google không thành công. Hãy kiểm tra domain được cấp quyền OAuth trong Google Cloud Console.")} text={authMode === "register" ? "signup_with" : "signin_with"} shape="pill" size="large" theme="outline" logo_alignment="left" width={300} /></div><span className="google-login-caption">Google là lựa chọn riêng, không bắt buộc để vào ứng dụng bằng ID cá nhân.</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập Google chưa được cấu hình</strong><p>Quản trị viên cần thiết lập NEXT_PUBLIC_GOOGLE_CLIENT_ID và domain OAuth hợp lệ. Bạn vẫn có thể tiếp tục bằng ID thành viên.</p></div></div>}
+        <button className="auth-mode-toggle" type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); }}>
           {authMode === "register" ? "Đã có tài khoản? Đăng nhập" : "Chưa là thành viên? Đăng ký ngay"}
         </button>
       </section>
     </div>
-    <footer className="login-footer"><span>Q-DCOM · CỘNG ĐỒNG KẾT NỐI</span><span>GOOGLE IDENTITY · HỒ SƠ LƯU CỤC BỘ</span></footer>
+    <footer className="login-footer"><span>Q-DCOM · CỘNG ĐỒNG KẾT NỐI</span><span>ID CÁ NHÂN HOẶC GOOGLE · HỒ SƠ LƯU CỤC BỘ</span></footer>
     {toast && <div className="toast" role="status"><CheckCircle2 />{toast}</div>}
   </main>;
 
@@ -394,7 +441,7 @@ export function QDcomApp() {
     <div className="app-layout">
       <aside className="sidebar glass"><div className="brand"><div className="brand-mark"><Boxes /></div><div><div className="brand-word">Q-<span>Dcom</span></div><div className="brand-caption">Quản lý kho & mẫu hàng</div></div></div><div className="nav-label">Không gian làm việc</div>
         <nav className="nav-stack" aria-label="Điều hướng chính">{pages.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? "active" : ""}`} onClick={() => setPage(id)}><Icon /><span>{label}</span>{id === "inventory" && <span className="nav-count">{activeProducts.length}</span>}</button>)}</nav>
-        <div className="sidebar-spacer" /><div className="warehouse-switch"><div className="warehouse-icon"><MapPin /></div><div><small>Kho đang hoạt động</small><strong>Kho trung tâm · HCM</strong></div></div><div className="profile-row"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile?.displayName ?? "Trần Ngọc"}</strong><span>{userProfile?.email ?? "Quản lý kho"}</span></div></div>
+        <div className="sidebar-spacer" /><div className="warehouse-switch"><div className="warehouse-icon"><MapPin /></div><div><small>Kho đang hoạt động</small><strong>Kho trung tâm · HCM</strong></div></div><div className="profile-row"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile?.displayName ?? "Trần Ngọc"}</strong><span>{userProfile?.memberId ? `ID: ${userProfile.memberId}` : userProfile?.email ?? "Quản lý kho"}</span></div></div>
       </aside>
       <section className="main-panel"><header className="topbar glass"><div className="mobile-wordmark">Q-<b>Dcom</b></div><div className="breadcrumb">Không gian kho <ChevronRight size={13} /><strong>{pageNames[page]}</strong></div><div className="topbar-actions"><span className="connection-pill"><i />Kho trên thiết bị</span><span className="topbar-divider" /><ProfileAvatar profile={userProfile} /></div></header>
         <div className="main-content">
@@ -425,8 +472,8 @@ export function QDcomApp() {
           {page === "settings" && <>
             <div className="page-heading"><div><div className="eyebrow"><SlidersHorizontal /> Tùy chỉnh không gian</div><h1>Cài đặt chung</h1><p>Hồ sơ nhóm, đồng bộ dữ liệu và giao diện kho.</p></div></div>
             <div className="settings-grid">
-              <section className="settings-card glass"><SettingsHead icon={<Video />} title="Giao diện & video nền" description="Tệp tùy chọn: public/videos/bg-video.mp4." /><div className="settings-card-body"><SettingSwitch title="Bật video nền" description="Nền tĩnh vẫn hiển thị khi chưa có tệp video." checked={settings.videoEnabled} onClick={() => saveSettings({ ...settings, videoEnabled: !settings.videoEnabled })} /><SettingRange title="Độ mờ kính" value={settings.glassBlur} min={0} max={32} suffix="px" onChange={(value) => saveSettings({ ...settings, glassBlur: value })} /><SettingRange title="Độ trong suốt" value={settings.glassOpacity} min={45} max={95} suffix="%" onChange={(value) => saveSettings({ ...settings, glassOpacity: value })} /><div className="setting-row"><div className="setting-copy"><strong>Màu phủ video</strong><small>Chọn sắc độ phủ nhẹ lên nền.</small></div><input className="tint-input" type="color" value={settings.videoTint} aria-label="Màu phủ video" onChange={(event) => saveSettings({ ...settings, videoTint: event.target.value })} /></div></div></section>
-              <section className="settings-card glass"><SettingsHead icon={<Users />} title="Tài khoản Google & hồ sơ" description="Hồ sơ được lưu trên thiết bị và chia sẻ qua mã QR." /><div className="settings-card-body">{userProfile ? <><div className="google-profile"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile.displayName}</strong><span>{userProfile.email}</span></div></div><button type="button" className="secondary-btn" onClick={logoutGoogle}><LogOut /> Đăng xuất Google</button></> : process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? <GoogleLogin onSuccess={(response) => handleGoogleLogin(response.credential)} onError={() => notify("Đăng nhập Google không thành công.")} /> : <p className="aside-note">Thêm NEXT_PUBLIC_GOOGLE_CLIENT_ID vào môi trường triển khai để bật đăng nhập Google.</p>}</div></section>
+              <section className="settings-card glass"><SettingsHead icon={<Video />} title="Giao diện & video nền" description="Đăng nhập: public/videos/login-bg-video.mp4 · Ứng dụng: public/videos/app-bg-video.mp4." /><div className="settings-card-body"><SettingSwitch title="Bật video nền" description="Nền tĩnh vẫn hiển thị khi chưa có tệp video." checked={settings.videoEnabled} onClick={() => saveSettings({ ...settings, videoEnabled: !settings.videoEnabled })} /><SettingRange title="Độ mờ kính" value={settings.glassBlur} min={0} max={32} suffix="px" onChange={(value) => saveSettings({ ...settings, glassBlur: value })} /><SettingRange title="Độ trong suốt" value={settings.glassOpacity} min={45} max={95} suffix="%" onChange={(value) => saveSettings({ ...settings, glassOpacity: value })} /><div className="setting-row"><div className="setting-copy"><strong>Màu phủ video</strong><small>Chọn sắc độ phủ nhẹ lên nền.</small></div><input className="tint-input" type="color" value={settings.videoTint} aria-label="Màu phủ video" onChange={(event) => saveSettings({ ...settings, videoTint: event.target.value })} /></div></div></section>
+              <section className="settings-card glass"><SettingsHead icon={<Users />} title="Tài khoản & hồ sơ" description="Hồ sơ được lưu trên thiết bị và chia sẻ qua mã QR." /><div className="settings-card-body">{userProfile ? <><div className="google-profile"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile.displayName}</strong><span>{userProfile.memberId ? `ID: ${userProfile.memberId}` : userProfile.email}</span></div></div><button type="button" className="secondary-btn" onClick={logoutProfile}><LogOut /> Đăng xuất</button></> : process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? <GoogleLogin onSuccess={(response) => handleGoogleLogin(response.credential)} onError={() => notify("Đăng nhập Google không thành công.")} /> : <p className="aside-note">Thêm NEXT_PUBLIC_GOOGLE_CLIENT_ID vào môi trường triển khai để bật đăng nhập Google.</p>}</div></section>
               <section className="settings-card glass wide"><SettingsHead icon={<QrCode />} title="Trung tâm Đồng bộ & Thành viên Q-Dcom" description="Kết bạn và chuyển mẫu hàng trực tiếp bằng QR; backup đầy đủ bằng file JSON." /><div className="settings-card-body"><div className="sync-actions"><button type="button" className="primary-btn" onClick={openShareDialog}><QrCode /> Tạo mã QR chia sẻ</button><button type="button" className="secondary-btn" onClick={() => { setSyncError(""); setScannerOpen(true); }}><Camera /> Mở Camera Quét QR</button><button type="button" className="secondary-btn" onClick={() => void exportBackup()}><Download /> Xuất File Backup</button><button type="button" className="secondary-btn" onClick={() => backupInput.current?.click()}><Upload /> Nhập File Backup</button><input ref={backupInput} type="file" accept="application/json,.json" hidden onChange={(event) => void importBackup(event)} /></div><div><div className="field-label">Thành viên nhóm Q-Dcom · {members.length}</div>{members.length ? <div className="members-list">{members.map((member) => <div className="member-row" key={member.peerId}><MemberAvatar member={member} /><span className="member-copy"><strong>{member.displayName}</strong><small>{member.email || "Thành viên Q-Dcom"}</small></span><small className="member-date">{new Date(member.addedAt).toLocaleDateString("vi-VN")}</small></div>)}</div> : <p className="aside-note">Chưa có thành viên. Quét mã QR của một thành viên để thêm vào danh sách.</p>}</div></div></section>
               <section className="settings-card glass wide"><SettingsHead icon={<Bot />} title="Kho từ vựng Bot @q" description="Nạp từ mới: nhập từ/cụm từ, chọn nhóm ý định rồi nhấn Thêm từ." /><div className="settings-card-body"><form className="vocabulary-form" onSubmit={addWord}><input className="text-field" value={newWord} onChange={(event) => setNewWord(event.target.value)} placeholder="Nhập từ hoặc cụm từ mới…" aria-label="Từ mới" /><select className="select-field" value={newIntent} onChange={(event) => setNewIntent(event.target.value as Exclude<BotIntent,"SEARCH">)} aria-label="Nhóm ý định"><option value="CHECK_QUANTITY">Hỏi số lượng</option><option value="CHECK_LOCATION">Hỏi vị trí</option><option value="GREETING">Chào hỏi</option></select><button className="primary-btn"><Plus /> Thêm từ</button></form>
                 <div className="vocabulary-groups">{(["CHECK_QUANTITY","CHECK_LOCATION","GREETING"] as const).map((intent) => <div key={intent}><div className="field-label">{{CHECK_QUANTITY:"Tra cứu số lượng",CHECK_LOCATION:"Tra cứu vị trí",GREETING:"Lời chào"}[intent]}</div><div className="vocabulary-chips">{vocabulary.intents[intent].map((word) => <span className="vocabulary-chip" key={word}>{word}<button type="button" aria-label={`Xóa ${word}`} onClick={() => removeWord(intent,word)}><X /></button></span>)}</div></div>)}</div>
@@ -462,7 +509,7 @@ export function QDcomApp() {
   </main>;
 }
 
-function ProfileAvatar({ profile }: { profile: GoogleProfile | null }) {
+function ProfileAvatar({ profile }: { profile: UserProfile | null }) {
   return <div className="avatar">{profile?.avatar ? <Image src={profile.avatar} alt="" fill unoptimized sizes="31px" /> : profile?.displayName.slice(0, 2).toUpperCase() ?? "TN"}</div>;
 }
 function MemberAvatar({ member }: { member: QDcomMember }) {

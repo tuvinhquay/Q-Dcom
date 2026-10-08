@@ -24,7 +24,7 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-oauth-client-id
 
 Client ID là định danh công khai, không phải client secret. Không đặt secret/token nhạy cảm trong biến `NEXT_PUBLIC_*`. Trên môi trường deploy, khai báo Client ID và các origin OAuth phù hợp trong Google Cloud Console.
 
-Ứng dụng yêu cầu đăng nhập trước khi mở dashboard. Đăng nhập Google lần đầu sẽ tự tạo hồ sơ Q-Dcom cục bộ; các lần sau dùng cùng nút để đăng nhập lại. Đăng xuất đưa ứng dụng về cổng xác thực. Q-Dcom hiện không có đăng nhập mật khẩu/email riêng; cần cấu hình Google OAuth để truy cập.
+Đăng ký bằng ID, họ tên và chuyên ngành mở dashboard ngay, không cần Google OAuth. Hồ sơ ID được lưu cục bộ và có thể đăng nhập lại trên cùng thiết bị sau khi đăng xuất. Google Login vẫn là một lựa chọn độc lập. Hồ sơ cục bộ không phải xác thực an toàn và không được đồng bộ qua máy chủ.
 
 ## Dữ liệu ngoại tuyến
 
@@ -52,15 +52,15 @@ lib/services/productService.ts Product service Dexie
 lib/sync/                     Schema QR và backup JSON
 public/manifest.json          PWA manifest
 public/sw.js                  Offline app-shell cache
-public/videos/                Đặt video tùy chọn bg-video.mp4
+public/videos/                Video riêng cho đăng nhập và ứng dụng
 types/                        Product, Inventory, BotQuery và UserRole
 SESSION_LOG.md                Lịch sử và handoff giữa các agent
 ```
 
 ## Luồng ứng dụng
 
-`app/page.tsx` kết xuất `QDcomApp`. Component điều phối các tab Kho, Tra cứu @q, Tổng quan và Cài đặt. Sản phẩm/từ vựng/thành viên được lưu trong Dexie; hồ sơ Google và tùy chỉnh giao diện được lưu cục bộ. Parser dùng `lib/bot/qBotParser.ts` và `lib/bot/vocabulary.ts`. QR dùng `html5-qrcode`/`qrcode.react`; backup được kiểm tra trong `lib/sync/qdcomSync.ts`.
+`app/page.tsx` kết xuất `QDcomApp`. Component điều phối các tab Kho, Tra cứu @q, Tổng quan và Cài đặt. Sản phẩm/từ vựng/thành viên được lưu trong Dexie; hồ sơ ID/Google và tùy chỉnh giao diện được lưu cục bộ. Parser dùng `lib/bot/qBotParser.ts` và `lib/bot/vocabulary.ts`. QR dùng `html5-qrcode`/`qrcode.react`; backup được kiểm tra trong `lib/sync/qdcomSync.ts`.
 
 ## Video nền
 
-Sao chép MP4 vào `public/videos/bg-video.mp4`. Video là tùy chọn; giao diện vẫn hoạt động khi không có tệp.
+Thêm các video MP4 tùy chọn theo tên `login-bg-video.mp4` (màn đăng nhập) và `app-bg-video.mp4` (dashboard) vào `public/videos/`. Giao diện nền tĩnh vẫn hoạt động nếu chưa có tệp.
