@@ -13,6 +13,10 @@ npm run dev
 
 Mở http://localhost:3000. Kiểm tra bằng `npm run lint`, `npx tsc --noEmit` và `npm run build`; chạy bản build với `npm start`.
 
+## Đóng góp và merge
+
+Tạo nhánh cho từng thay đổi, mở pull request vào `main`, review rồi squash-merge. Hướng dẫn chi tiết và checklist nằm trong [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Cấu hình môi trường
 
 Sao chép `.env.example` thành `.env.local`. IndexedDB hoạt động ngay cả khi chưa cấu hình OAuth. Để bật đăng nhập Google, tạo OAuth 2.0 Web Client trong Google Cloud Console, thêm origin ứng dụng vào Authorized JavaScript origins, rồi khai báo:
