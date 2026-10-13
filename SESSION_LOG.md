@@ -142,3 +142,28 @@
 - File phiên này bổ sung: `app/globals.css`, `components/qdcom-app.tsx`, `README.md`, `SESSION_LOG.md`.
 - Typecheck và lint đã chạy thành công sau khi thêm cổng đăng nhập; dev server có sẵn trả HTTP 200 trên `http://localhost:3000`. Production build vẫn chưa chạy do lệnh trước đó đã bị bỏ qua.
 - Bàn giao tiếp: cấu hình Google Client ID/origin, chạy production build, thử cài PWA sau lần truy cập HTTPS đầu tiên, kiểm thử hai thiết bị quét QR và xác nhận round-trip backup có ảnh.
+
+## Phiên 2026-10-13 · Tái cấu trúc Sidebar và điều hướng dashboard
+
+### Thay đổi
+
+- Tổ chức Sidebar thành các nhóm Quản lý chính, Giới thiệu & phát triển dự án, Hệ thống và Tính năng đang phát triển; giữ badge số mẫu hàng tại mục Kho.
+- Bổ sung tab Giới thiệu Q-Dcom và tab tóm tắt Chính sách bảo mật trong khung dashboard; tab bảo mật liên kết tới route `/privacy` hiện có.
+- Bổ sung các mục xem trước Đặt đồ ăn nhanh và Tính sản lượng & Năng suất. Khi chọn, các mục chỉ hiển thị toast “Tính năng đang trong quá trình hoàn thiện và sẽ ra mắt ở phiên bản tiếp theo!”, không điều hướng nhầm sang màn hình chức năng.
+- Tái sử dụng các nhóm menu cho Sidebar desktop và thanh điều hướng di động; thanh mobile cuộn ngang để tiếp cận đầy đủ các mục.
+- Làm mới Sidebar với nền glassmorphism, viền gradient/glow, hiệu ứng slide-in, cùng hiệu ứng nổi và viền sáng cho trạng thái hover/active.
+- Bỏ render `AppIntroSection` bên ngoài dashboard ở `app/page.tsx` và xóa component cũ `components/AppIntroSection.tsx`; nội dung giới thiệu được chuyển vào tab nội bộ.
+- Cập nhật `README.md` mô tả cấu trúc menu, tab, liên kết `/privacy`, mục preview và hiệu ứng Sidebar.
+
+### Kiểm tra
+
+- `npx eslint components/qdcom-app.tsx app/page.tsx`: thành công.
+- `npm run build`: thành công; Next.js 16.3.8 prerender các route `/` và `/privacy`.
+- `git diff --check`: thành công.
+- `npm run dev` phản hồi HTTP 200 tại `http://localhost:3000` trong phiên kiểm tra.
+
+### Bàn giao Git và triển khai
+
+- Không xóa hay ghi đè các mục lịch sử ở trên; mục này được append để giữ nguyên dấu vết các phiên trước.
+- Tại thời điểm ghi log, workspace đang ở nhánh `sync/current-main-updates-2026-10-10`; `HEAD`, `main` và `origin/main` cùng trỏ tới `b26ea27`. Các thay đổi trong workspace chưa được commit, trong đó có cả thay đổi staged và unstaged từ trước phiên Sidebar.
+- Chưa tạo commit, push, merge hay kích hoạt deploy Vercel. Trước khi phát hành cần xác nhận rõ phạm vi các thay đổi đang chờ, tránh vô tình đưa các chỉnh sửa tồn tại trước đó vào commit.

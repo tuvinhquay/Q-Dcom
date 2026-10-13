@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import type { Viewport } from "next";
 import type { ReactNode } from "react";
-import { GoogleAuthProvider } from "@/components/google-auth-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,5 +18,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return <html lang="vi"><body><GoogleAuthProvider>{children}</GoogleAuthProvider></body></html>;
+  return <html lang="vi"><body>{children}</body></html>;
 }

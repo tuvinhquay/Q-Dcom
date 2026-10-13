@@ -3,11 +3,12 @@
 import {
   Activity, ArrowRight, BadgeCheck, BarChart3, Bot, Boxes, Check, CheckCircle2, ChevronRight,
   Camera, CircleAlert, Download, ImagePlus, LayoutDashboard, LockKeyhole, LogOut,
-  MapPin, MessageCircle, Package, Paperclip, Pencil, Plus, QrCode, Search, Send,
+  MapPin, MessageCircle, Package, Paperclip, Pencil, Plus, QrCode, Rocket, Search, Send,
   Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sparkles, Trash2,
-  Upload, Users, Video, X, IdCard, UserRound, BriefcaseBusiness,
+  TrendingUp, Utensils, Upload, Users, Video, X, IdCard, UserRound, BriefcaseBusiness,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import type { ChangeEvent, CSSProperties, FormEvent, ReactNode } from "react";
 import { startTransition, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -21,12 +22,16 @@ import { SearchBar } from "@/components/search/SearchBar";
 import { parseQBotQuery } from "@/lib/bot/qBotParser";
 import { copyDefaultVocabulary, type BotIntent, type BotVocabulary } from "@/lib/bot/vocabulary";
 import { qdcomDB, type QDcomMember } from "@/lib/db/qdcomDB";
+import { isFirebaseConfigured, signInAnonymously, signOutFirebaseUser } from "@/lib/firebase";
 import { parseBackup, parseSharePayload, serializeBackup, createSharePayload } from "@/lib/sync/qdcomSync";
 import { syncBackupToGoogleDrive } from "@/lib/sync/googleDriveBackup";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
 import type { Product, ProductStatus } from "@/types/product";
 
-type PageKey = "inventory" | "bot" | "reports" | "settings";
+type PageKey = "inventory" | "bot" | "reports" | "about" | "privacy" | "settings";
+type MenuItem =
+  | { id: PageKey; label: string; icon: typeof Package; preview?: false }
+  | { id: "food" | "productivity"; label: string; icon: typeof Package; preview: true };
 type ChatMessage = { id: number; role: "user" | "assistant"; text: string; productIds?: string[] };
 type Settings = { videoEnabled: boolean; glassBlur: number; glassOpacity: number; videoTint: string };
 type UserProfile = { peerId: string; googleSub?: string; displayName: string; email: string; avatar: string; memberId?: string; specialty?: string };
@@ -38,13 +43,40 @@ const PROFILE_KEY = "qdcom.user_profile.v1";
 const LOCAL_MEMBERS_KEY = "qdcom.local_members.v1";
 const PEER_KEY = "qdcom.peer_id.v1";
 const defaults: Settings = { videoEnabled: true, glassBlur: 18, glassOpacity: 74, videoTint: "#2563eb" };
-const pages: { id: PageKey; label: string; icon: typeof Package }[] = [
-  { id: "inventory", label: "Mẫu hàng & kho", icon: LayoutDashboard },
-  { id: "bot", label: "Tra cứu @q", icon: MessageCircle },
-  { id: "reports", label: "Tổng quan kho", icon: BarChart3 },
-  { id: "settings", label: "Cài đặt", icon: SettingsIcon },
+const navGroups: { label: string; items: MenuItem[] }[] = [
+  {
+    label: "📱 Quản lý chính",
+    items: [
+      { id: "inventory", label: "Mẫu hàng & Kho", icon: LayoutDashboard },
+      { id: "bot", label: "Tra cứu @q", icon: MessageCircle },
+      { id: "reports", label: "Tổng quan kho", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "💡 Giới thiệu & phát triển dự án",
+    items: [
+      { id: "about", label: "Giới thiệu Q-Dcom", icon: Rocket },
+      { id: "privacy", label: "Chính sách bảo mật dữ liệu", icon: ShieldCheck },
+    ],
+  },
+  { label: "⚙️ Hệ thống", items: [{ id: "settings", label: "Cài đặt", icon: SettingsIcon }] },
+  {
+    label: "⏳ Tính năng đang phát triển",
+    items: [
+      { id: "food", label: "Đặt đồ ăn nhanh", icon: Utensils, preview: true },
+      { id: "productivity", label: "Tính sản lượng & Năng suất", icon: TrendingUp, preview: true },
+    ],
+  },
 ];
-const pageNames: Record<PageKey, string> = { inventory: "Mẫu hàng & kho", bot: "Tra cứu @q", reports: "Tổng quan kho", settings: "Cài đặt chung" };
+const pageNames: Record<PageKey, string> = {
+  inventory: "Mẫu hàng & Kho",
+  bot: "Tra cứu @q",
+  reports: "Tổng quan kho",
+  about: "Giới thiệu Q-Dcom",
+  privacy: "Chính sách bảo mật dữ liệu",
+  settings: "Cài đặt chung",
+};
+const previewMessage = "Tính năng đang trong quá trình hoàn thiện và sẽ ra mắt ở phiên bản tiếp theo!";
 const statusNames: Record<ProductStatus, string> = { available: "Còn hàng", low_stock: "Sắp hết", out_of_stock: "Hết hàng", hidden: "Đang ẩn" };
 
 function readSaved<T>(key: string, fallback: T): T {
@@ -107,10 +139,12 @@ export function QDcomApp() {
   const [newIntent, setNewIntent] = useState<Exclude<BotIntent, "SEARCH">>("CHECK_QUANTITY");
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
   const googleAuthRef = useRef<HTMLDivElement>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareValue, setShareValue] = useState("");
   const [shareSelection, setShareSelection] = useState<string[]>([]);
+  const [omitBackupImages, setOmitBackupImages] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [driveConnected, setDriveConnected] = useState(false);
@@ -243,6 +277,22 @@ export function QDcomApp() {
   }
   function removeWord(intent: Exclude<BotIntent, "SEARCH">, word: string) {
     storeVocabulary({ ...vocabulary, intents: { ...vocabulary.intents, [intent]: vocabulary.intents[intent].filter((item) => item !== word) } });
+  }
+  async function handleGuestLogin() {
+    setAuthBusy(true);
+    try {
+      const { user } = await signInAnonymously();
+      const profile: UserProfile = { peerId: user.uid, displayName: "Khách", email: "", avatar: "" };
+      window.localStorage.setItem(PEER_KEY, profile.peerId);
+      window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      setUserProfile(profile);
+      setPage("inventory");
+      notify("Đang sử dụng Q-Dcom với tư cách khách.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Không thể đăng nhập khách.");
+    } finally {
+      setAuthBusy(false);
+    }
   }
   async function handleGoogleAuthorization(accessToken: string) {
     const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -378,6 +428,12 @@ export function QDcomApp() {
         return;
       }
     }
+    try {
+      await signOutFirebaseUser();
+    } catch (error) {
+      notify(error instanceof Error ? `Không thể đăng xuất Firebase: ${error.message}` : "Không thể đăng xuất Firebase.");
+      return;
+    }
     driveAccessToken.current = null;
     setDriveConnected(false);
     setDriveSyncStatus("idle");
@@ -401,7 +457,6 @@ export function QDcomApp() {
         peerId,
         displayName: userProfile?.displayName ?? "Thành viên Q-Dcom",
         email: userProfile?.email ?? "",
-        avatar: userProfile?.avatar ?? "",
       }, selectedProducts));
       setSyncError("");
     } catch (error) { setSyncError(error instanceof Error ? error.message : "Không thể tạo mã QR."); }
@@ -415,12 +470,49 @@ export function QDcomApp() {
         peerId: payload.peer.peerId,
         displayName: payload.peer.displayName,
         email: payload.peer.email,
-        avatar: payload.peer.avatar.startsWith("https://") ? payload.peer.avatar : "",
+        avatar: "",
         addedAt: new Date().toISOString(),
       };
       await qdcomDB.transaction("rw", qdcomDB.members, qdcomDB.products, async () => {
         if (payload.peer.peerId !== ownPeerId) await qdcomDB.members.put(member);
-        if (payload.products.length) await qdcomDB.products.bulkPut(payload.products);
+        if (payload.products.length) {
+          const existingProducts = await qdcomDB.products.bulkGet(payload.products.map((product) => product.id));
+          const importedProducts = payload.products.map((shared, index): Product => {
+            const existing = existingProducts[index];
+            const now = new Date().toISOString();
+            if (existing) {
+              return {
+                ...existing,
+                id: shared.id,
+                name: shared.name,
+                quantity: shared.quantity,
+                status: existing.status === "hidden" ? "hidden" : stockStatus(shared.quantity),
+                updated_at: now,
+                ...(shared.price === null ? {} : { price: shared.price }),
+              };
+            }
+            return {
+              id: shared.id,
+              name: shared.name,
+              brand: "",
+              color: "",
+              size: [],
+              quantity: shared.quantity,
+              image_urls: [],
+              image_notes: "",
+              description: "",
+              category: "Khác",
+              status: stockStatus(shared.quantity),
+              location: "",
+              created_by: member.displayName,
+              created_at: now,
+              updated_at: now,
+              search_keywords: [],
+              ...(shared.price === null ? {} : { price: shared.price }),
+            };
+          });
+          await qdcomDB.products.bulkPut(importedProducts);
+        }
       });
       setProducts(await listProducts());
       setMembers(await qdcomDB.members.toArray());
@@ -438,14 +530,18 @@ export function QDcomApp() {
   async function exportBackup() {
     try {
       const [allProducts, storedVocabulary, allMembers] = await Promise.all([qdcomDB.products.toArray(), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()]);
-      const contents = serializeBackup(allProducts, storedVocabulary?.value ?? vocabulary, allMembers);
+      const contents = serializeBackup(allProducts, storedVocabulary?.value ?? vocabulary, allMembers, {
+        omitBase64Images: omitBackupImages,
+      });
       const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
       const link = document.createElement("a");
       link.href = url;
       link.download = `Q-Dcom_Backup_${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      notify("Đã xuất file backup Q-Dcom.");
+      notify(omitBackupImages
+        ? "Đã xuất file backup Q-Dcom không kèm ảnh Base64."
+        : "Đã xuất file backup Q-Dcom.");
     } catch (error) { notify(error instanceof Error ? error.message : "Không thể xuất file backup."); }
   }
   async function importBackup(event: ChangeEvent<HTMLInputElement>) {
@@ -504,7 +600,7 @@ export function QDcomApp() {
           <p className="local-login-note"><LockKeyhole /> Hồ sơ ID được lưu trên thiết bị này; bạn vẫn có thể đăng nhập riêng bằng Google.</p>
         </form>}
         <div className="login-divider"><span>{authMode === "register" ? "HOẶC ĐĂNG KÝ NHANH BẰNG" : "HOẶC ĐĂNG NHẬP NHANH BẰNG"}</span></div>
-        {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? <div className="google-login-wrap" ref={googleAuthRef}><span className="google-login-label">Đăng nhập và sao lưu an toàn với Google</span><GoogleDriveLoginButton label="Đăng ký / Đăng nhập bằng Google" onAuthorized={handleGoogleAuthorization} onError={notify} /><span className="google-login-caption">Q-Dcom chỉ lưu backup riêng trong vùng dữ liệu ứng dụng trên Google Drive của bạn.</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập Google chưa được cấu hình</strong><p>Quản trị viên cần thiết lập NEXT_PUBLIC_GOOGLE_CLIENT_ID và domain OAuth hợp lệ. Bạn vẫn có thể tiếp tục bằng ID thành viên.</p></div></div>}
+        {isFirebaseConfigured ? <div className="google-login-wrap" ref={googleAuthRef}><span className="google-login-label">Đăng nhập và sao lưu an toàn với Google</span><GoogleDriveLoginButton label="Đăng ký / Đăng nhập bằng Google" onAuthorized={handleGoogleAuthorization} onError={notify} /><span className="google-login-caption">Q-Dcom chỉ lưu backup riêng trong vùng dữ liệu ứng dụng trên Google Drive của bạn.</span><button className="guest-login-button" type="button" onClick={() => void handleGuestLogin()} disabled={authBusy}>{authBusy ? "ĐANG ĐĂNG NHẬP…" : "TIẾP TỤC VỚI TƯ CÁCH KHÁCH"}</button></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập cấu hình Firebase Auth và bật đăng nhập Google, ẩn danh trong Firebase Console.</p></div></div>}
         <button className="auth-mode-toggle" type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); }}>
           {authMode === "register" ? "Đã có tài khoản? Đăng nhập" : "Chưa là thành viên? Đăng ký ngay"}
         </button>
@@ -517,9 +613,35 @@ export function QDcomApp() {
   return <main className="app-frame" style={appStyle}>
     <BackgroundVideo enabled={settings.videoEnabled} tint={settings.videoTint} />
     <div className="app-layout">
-      <aside className="sidebar glass"><div className="brand"><div className="brand-mark"><Boxes /></div><div><div className="brand-word">Q-<span>Dcom</span></div><div className="brand-caption">Quản lý kho & mẫu hàng</div></div></div><div className="nav-label">Không gian làm việc</div>
-        <nav className="nav-stack" aria-label="Điều hướng chính">{pages.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? "active" : ""}`} onClick={() => setPage(id)}><Icon /><span>{label}</span>{id === "inventory" && <span className="nav-count">{activeProducts.length}</span>}</button>)}</nav>
-        <div className="sidebar-spacer" /><div className="warehouse-switch"><div className="warehouse-icon"><MapPin /></div><div><small>Kho đang hoạt động</small><strong>Kho trung tâm · HCM</strong></div></div><div className="profile-row"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile?.displayName ?? "Trần Ngọc"}</strong><span>{userProfile?.memberId ? `ID: ${userProfile.memberId}` : userProfile?.email ?? "Quản lý kho"}</span></div></div>
+      <aside className="sidebar glass">
+        <div className="brand"><div className="brand-mark"><Boxes /></div><div><div className="brand-word">Q-<span>Dcom</span></div><div className="brand-caption">Quản lý kho & mẫu hàng</div></div></div>
+        <nav className="nav-stack" aria-label="Điều hướng chính">
+          {navGroups.map((group) => <section className="nav-group" key={group.label} aria-label={group.label}>
+            <div className="nav-label">{group.label}</div>
+            {group.items.map(({ id, label, icon: Icon, preview }, index) => {
+              const isActive = !preview && page === id;
+              return <button
+                key={id}
+                type="button"
+                className={`nav-link ${isActive ? "active" : ""} ${preview ? "preview" : ""}`}
+                style={{ animationDelay: `${index * 45}ms` }}
+                aria-current={isActive ? "page" : undefined}
+                onClick={() => {
+                  if (preview) notify(previewMessage);
+                  else setPage(id);
+                }}
+              >
+                <Icon aria-hidden="true" />
+                <span>{label}</span>
+                {id === "inventory" && <span className="nav-count">{activeProducts.length}</span>}
+                {preview && <span className="nav-badge">Đang phát triển</span>}
+              </button>;
+            })}
+          </section>)}
+        </nav>
+        <div className="sidebar-spacer" />
+        <div className="warehouse-switch"><div className="warehouse-icon"><MapPin /></div><div><small>Kho đang hoạt động</small><strong>Kho trung tâm · HCM</strong></div></div>
+        <div className="profile-row"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile?.displayName ?? "Trần Ngọc"}</strong><span>{userProfile?.memberId ? `ID: ${userProfile.memberId}` : userProfile?.email || (userProfile ? "Khách" : "Quản lý kho")}</span></div></div>
       </aside>
       <section className="main-panel"><header className="topbar glass"><div className="mobile-wordmark">Q-<b>Dcom</b></div><div className="breadcrumb">Không gian kho <ChevronRight size={13} /><strong>{pageNames[page]}</strong></div><div className="topbar-actions"><span className={`connection-pill drive-connection ${driveSyncStatus}`} title={driveSyncMessage || undefined}><i />{driveSyncStatus === "syncing" ? "Đang đồng bộ Drive" : driveSyncStatus === "synced" ? "Đã lưu trên Drive" : driveSyncStatus === "error" ? "Lỗi đồng bộ Drive" : driveConnected ? "Drive đã kết nối" : "Drive chưa kết nối"}</span><span className="topbar-divider" /><ProfileAvatar profile={userProfile} /></div></header>
         <div className="main-content">
@@ -551,19 +673,55 @@ export function QDcomApp() {
             <div className="page-heading"><div><div className="eyebrow"><SlidersHorizontal /> Tùy chỉnh không gian</div><h1>Cài đặt chung</h1><p>Hồ sơ nhóm, đồng bộ dữ liệu và giao diện kho.</p></div></div>
             <div className="settings-grid">
               <section className="settings-card glass"><SettingsHead icon={<Video />} title="Giao diện & video nền" description="Đăng nhập: public/videos/login-bg-video.mp4 · Ứng dụng: public/videos/app-bg-video.mp4." /><div className="settings-card-body"><SettingSwitch title="Bật video nền" description="Nền tĩnh vẫn hiển thị khi chưa có tệp video." checked={settings.videoEnabled} onClick={() => saveSettings({ ...settings, videoEnabled: !settings.videoEnabled })} /><SettingRange title="Độ mờ kính" value={settings.glassBlur} min={0} max={32} suffix="px" onChange={(value) => saveSettings({ ...settings, glassBlur: value })} /><SettingRange title="Độ trong suốt" value={settings.glassOpacity} min={45} max={95} suffix="%" onChange={(value) => saveSettings({ ...settings, glassOpacity: value })} /><div className="setting-row"><div className="setting-copy"><strong>Màu phủ video</strong><small>Chọn sắc độ phủ nhẹ lên nền.</small></div><input className="tint-input" type="color" value={settings.videoTint} aria-label="Màu phủ video" onChange={(event) => saveSettings({ ...settings, videoTint: event.target.value })} /></div></div></section>
-              <section className="settings-card glass"><SettingsHead icon={<Users />} title="Tài khoản & hồ sơ" description="Hồ sơ được lưu trên thiết bị và chia sẻ qua mã QR." /><div className="settings-card-body">{userProfile ? <><div className="google-profile"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile.displayName}</strong><span>{userProfile.memberId ? `ID: ${userProfile.memberId}` : userProfile.email}</span></div></div>{userProfile.googleSub && (!driveConnected || driveSyncStatus === "error") && process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && <GoogleDriveLoginButton label="Kết nối lại Google Drive" onAuthorized={handleGoogleAuthorization} onError={notify} />}{driveSyncStatus === "error" && <p className="drive-sync-error" role="alert">{driveSyncMessage}</p>}<button type="button" className="secondary-btn" onClick={() => void logoutProfile()}><LogOut /> Đăng xuất</button></> : <p className="aside-note">Đăng nhập để quản lý hồ sơ và bật đồng bộ dữ liệu.</p>}</div></section>
-              <section className="settings-card glass wide"><SettingsHead icon={<QrCode />} title="Trung tâm Đồng bộ & Thành viên Q-Dcom" description="Kết bạn và chuyển mẫu hàng trực tiếp bằng QR; backup đầy đủ bằng file JSON." /><div className="settings-card-body"><div className="sync-actions"><button type="button" className="primary-btn" onClick={openShareDialog}><QrCode /> Tạo mã QR chia sẻ</button><button type="button" className="secondary-btn" onClick={() => { setSyncError(""); setScannerOpen(true); }}><Camera /> Mở Camera Quét QR</button><button type="button" className="secondary-btn" onClick={() => void exportBackup()}><Download /> Xuất File Backup</button><button type="button" className="secondary-btn" onClick={() => backupInput.current?.click()}><Upload /> Nhập File Backup</button><input ref={backupInput} type="file" accept="application/json,.json" hidden onChange={(event) => void importBackup(event)} /></div><div><div className="field-label">Thành viên nhóm Q-Dcom · {members.length}</div>{members.length ? <div className="members-list">{members.map((member) => <div className="member-row" key={member.peerId}><MemberAvatar member={member} /><span className="member-copy"><strong>{member.displayName}</strong><small>{member.email || "Thành viên Q-Dcom"}</small></span><small className="member-date">{new Date(member.addedAt).toLocaleDateString("vi-VN")}</small></div>)}</div> : <p className="aside-note">Chưa có thành viên. Quét mã QR của một thành viên để thêm vào danh sách.</p>}</div></div></section>
+              <section className="settings-card glass"><SettingsHead icon={<Users />} title="Tài khoản & hồ sơ" description="Hồ sơ được lưu trên thiết bị và chia sẻ qua mã QR." /><div className="settings-card-body">{userProfile ? <><div className="google-profile"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile.displayName}</strong><span>{userProfile.memberId ? `ID: ${userProfile.memberId}` : userProfile.email || "Khách"}</span></div></div>{userProfile.googleSub && (!driveConnected || driveSyncStatus === "error") && isFirebaseConfigured && <GoogleDriveLoginButton label="Kết nối lại Google Drive" onAuthorized={handleGoogleAuthorization} onError={notify} />}{driveSyncStatus === "error" && <p className="drive-sync-error" role="alert">{driveSyncMessage}</p>}<button type="button" className="secondary-btn" onClick={() => void logoutProfile()}><LogOut /> Đăng xuất</button></> : <p className="aside-note">Đăng nhập để quản lý hồ sơ và bật đồng bộ dữ liệu.</p>}</div></section>
+              <section className="settings-card glass wide"><SettingsHead icon={<QrCode />} title="Trung tâm Đồng bộ & Thành viên Q-Dcom" description="Kết bạn và chuyển mẫu hàng trực tiếp bằng QR; backup đầy đủ bằng file JSON." /><div className="settings-card-body"><div className="sync-actions"><button type="button" className="primary-btn" onClick={openShareDialog}><QrCode /> Tạo mã QR chia sẻ</button><button type="button" className="secondary-btn" onClick={() => { setSyncError(""); setScannerOpen(true); }}><Camera /> Mở Camera Quét QR</button><button type="button" className="secondary-btn" onClick={() => void exportBackup()}><Download /> Xuất File Backup</button><button type="button" className="secondary-btn" onClick={() => backupInput.current?.click()}><Upload /> Nhập File Backup</button><input ref={backupInput} type="file" accept="application/json,.json" hidden onChange={(event) => void importBackup(event)} /></div><label className="backup-option"><input type="checkbox" checked={omitBackupImages} onChange={(event) => setOmitBackupImages(event.target.checked)} /><span><strong>Nén nhẹ (bỏ dữ liệu ảnh Base64)</strong><small>Áp dụng cho file backup JSON tải xuống; ảnh liên kết ngoài vẫn được giữ.</small></span></label><div><div className="field-label">Thành viên nhóm Q-Dcom · {members.length}</div>{members.length ? <div className="members-list">{members.map((member) => <div className="member-row" key={member.peerId}><MemberAvatar member={member} /><span className="member-copy"><strong>{member.displayName}</strong><small>{member.email || "Thành viên Q-Dcom"}</small></span><small className="member-date">{new Date(member.addedAt).toLocaleDateString("vi-VN")}</small></div>)}</div> : <p className="aside-note">Chưa có thành viên. Quét mã QR của một thành viên để thêm vào danh sách.</p>}</div></div></section>
               <section className="settings-card glass wide"><SettingsHead icon={<Bot />} title="Kho từ vựng Bot @q" description="Nạp từ mới: nhập từ/cụm từ, chọn nhóm ý định rồi nhấn Thêm từ." /><div className="settings-card-body"><form className="vocabulary-form" onSubmit={addWord}><input className="text-field" value={newWord} onChange={(event) => setNewWord(event.target.value)} placeholder="Nhập từ hoặc cụm từ mới…" aria-label="Từ mới" /><select className="select-field" value={newIntent} onChange={(event) => setNewIntent(event.target.value as Exclude<BotIntent,"SEARCH">)} aria-label="Nhóm ý định"><option value="CHECK_QUANTITY">Hỏi số lượng</option><option value="CHECK_LOCATION">Hỏi vị trí</option><option value="GREETING">Chào hỏi</option></select><button className="primary-btn"><Plus /> Thêm từ</button></form>
                 <div className="vocabulary-groups">{(["CHECK_QUANTITY","CHECK_LOCATION","GREETING"] as const).map((intent) => <div key={intent}><div className="field-label">{{CHECK_QUANTITY:"Tra cứu số lượng",CHECK_LOCATION:"Tra cứu vị trí",GREETING:"Lời chào"}[intent]}</div><div className="vocabulary-chips">{vocabulary.intents[intent].map((word) => <span className="vocabulary-chip" key={word}>{word}<button type="button" aria-label={`Xóa ${word}`} onClick={() => removeWord(intent,word)}><X /></button></span>)}</div></div>)}</div>
                 <ResponseEditor label="Câu chào của bot" values={vocabulary.responses.GREETING} onChange={(values) => storeVocabulary({ ...vocabulary, responses: { ...vocabulary.responses, GREETING: values } })} /><ResponseEditor label="Khi không tìm thấy" values={vocabulary.responses.NOT_FOUND} onChange={(values) => storeVocabulary({ ...vocabulary, responses: { ...vocabulary.responses, NOT_FOUND: values } })} />
               </div></section>
             </div>
           </>}
+
+          {page === "about" && <section className="app-info-page">
+            <div className="page-heading"><div><div className="eyebrow"><Rocket /> Tầm nhìn & sứ mệnh</div><h1>Giới thiệu Q-Dcom</h1><p>Quản lý kho hàng cá nhân và hộ kinh doanh theo cách tối giản.</p></div></div>
+            <article className="app-info-card glass">
+              <span className="app-info-icon"><Boxes aria-hidden="true" /></span>
+              <div className="app-info-copy">
+                <div className="app-info-kicker">Q-DCOM · QUẢN LÝ KHO THÔNG MINH</div>
+                <h2>Để việc quản lý kho trở nên gọn nhẹ hơn</h2>
+                <p>Q-Dcom giúp cá nhân và chủ hộ kinh doanh quản lý mẫu hàng, số lượng tồn và vị trí lưu trữ trong một không gian trực quan. Chúng tôi hướng đến việc tối giản thao tác thủ công để bạn dành nhiều thời gian hơn cho công việc kinh doanh.</p>
+                <div className="app-info-points">
+                  <div><Package aria-hidden="true" /><span>Theo dõi mẫu hàng, tồn kho và vị trí lưu trữ.</span></div>
+                  <div><MessageCircle aria-hidden="true" /><span>Tra cứu nhanh dữ liệu kho với trợ lý @q.</span></div>
+                  <div><ShieldCheck aria-hidden="true" /><span>Chủ động quản lý và sao lưu dữ liệu của bạn.</span></div>
+                </div>
+              </div>
+            </article>
+          </section>}
+
+          {page === "privacy" && <section className="app-info-page">
+            <div className="page-heading"><div><div className="eyebrow"><ShieldCheck /> Minh bạch & an toàn</div><h1>Chính sách bảo mật dữ liệu</h1><p>Quyền riêng tư và dữ liệu của bạn luôn được ưu tiên.</p></div></div>
+            <article className="app-info-card glass">
+              <span className="app-info-icon privacy"><LockKeyhole aria-hidden="true" /></span>
+              <div className="app-info-copy">
+                <div className="app-info-kicker">GOOGLE API USER DATA POLICY · LIMITED USE</div>
+                <h2>Dữ liệu của bạn luôn trong quyền kiểm soát của bạn</h2>
+                <p>Q-Dcom cam kết tuân thủ Google API User Data Policy, bao gồm yêu cầu Limited Use. Dữ liệu sao lưu Google Drive được lưu trong vùng dữ liệu ứng dụng riêng tư của bạn; Q-Dcom không sử dụng dữ liệu đó ngoài mục đích cung cấp tính năng đã yêu cầu.</p>
+                <Link className="privacy-back-link app-info-link" href="/privacy"><ShieldCheck aria-hidden="true" /> Đọc chính sách bảo mật đầy đủ <ArrowRight aria-hidden="true" /></Link>
+              </div>
+            </article>
+          </section>}
         </div>
       </section>
     </div>
 
-    <nav className="bottom-nav" aria-label="Điều hướng di động">{pages.map(({ id, icon: Icon }) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon />{id === "inventory" ? "Kho" : id === "bot" ? "@q" : id === "reports" ? "Tổng quan" : "Cài đặt"}</button>)}</nav>
+    <nav className="bottom-nav" aria-label="Điều hướng di động">{navGroups.flatMap(({ items }) => items).map(({ id, label, icon: Icon, preview }) => {
+      const isActive = !preview && page === id;
+      return <button key={id} type="button" className={`${isActive ? "active" : ""} ${preview ? "preview" : ""}`} aria-current={isActive ? "page" : undefined} onClick={() => {
+        if (preview) notify(previewMessage);
+        else setPage(id);
+      }}><Icon aria-hidden="true" /><span>{label}</span></button>;
+    })}</nav>
 
     {selected && !editorOpen && <div className="detail-backdrop" onClick={(event) => event.target === event.currentTarget && setSelectedId(null)}><section className="detail-modal glass" role="dialog" aria-modal="true" aria-label={`Chi tiết ${selected.name}`}><div className="modal-head"><h2>Hồ sơ mẫu hàng</h2><button className="modal-close" aria-label="Đóng" onClick={() => setSelectedId(null)}><X /></button></div><div className="detail-body"><div className="detail-visual"><ProductImage product={selected} className="detail-image" /><span className="image-count">Ảnh {selected.image_urls.length ? "01" : "0"} / {String(selected.image_urls.length).padStart(2,"0")}</span></div><div className="detail-info"><div className="eyebrow"><Package /> {selected.category}</div><h2>{selected.name}</h2><div className="detail-id">Mã định danh: {selected.id}</div><div className="detail-status-row"><Badge status={selected.status} /><span className="spec-value">Cập nhật {new Date(selected.updated_at).toLocaleDateString("vi-VN")}</span></div><div className="detail-specs"><Spec label="Thương hiệu" value={selected.brand} /><Spec label="Màu sắc" value={selected.color} /><div className="all-columns"><div className="spec-label">Kích cỡ có sẵn</div><div className="size-tags">{selected.size.length ? selected.size.map((size) => <span className="size-tag" key={size}>{size}</span>) : <span className="aside-note">Chưa khai báo</span>}</div></div><Spec label="Tồn kho tổng" value={`${selected.quantity} sản phẩm`} /><Spec label="Vị trí lưu trữ" value={selected.location || "Chưa xếp kệ"} /></div><div className="detail-description"><h3>Mô tả mẫu hàng</h3><p>{selected.description || "Chưa có mô tả."}</p>{selected.image_notes && <div className="image-note"><ImagePlus size={12} />Ghi chú ảnh: {selected.image_notes}</div>}</div><div className="detail-actions"><button className="secondary-btn" onClick={() => openEditor(selected)}><Pencil /> Chỉnh sửa</button><button className="primary-btn" onClick={() => { setStockDelta("0"); setStockOpen(true); }}><Boxes /> Cập nhật tồn kho</button></div></div></div></section></div>}
 
@@ -573,7 +731,8 @@ export function QDcomApp() {
       <TextInput label="Tên mẫu hàng *" value={draft.name} setValue={(value) => setDraft({ ...draft, name:value })} required placeholder="Air Force 1 '07" />
       <div className="form-grid"><TextInput label="Mã ID *" value={draft.id} setValue={(value) => setDraft({ ...draft, id:value })} required disabled={Boolean(editingId)} /><TextInput label="Thương hiệu *" value={draft.brand} setValue={(value) => setDraft({ ...draft, brand:value })} required placeholder="Nike" /></div>
       <div className="form-grid"><TextInput label="Màu sắc" value={draft.color} setValue={(value) => setDraft({ ...draft, color:value })} placeholder="Đen / Trắng" /><div><label className="field-label" htmlFor="product-category">Danh mục</label><select id="product-category" className="select-field" value={draft.category} onChange={(event) => setDraft({ ...draft, category:event.target.value })}>{["Giày","Áo","Quần","Phụ kiện","Túi","Khác"].map((item) => <option key={item}>{item}</option>)}</select></div></div>
-      <div className="form-grid"><div><label className="field-label" htmlFor="product-quantity">Số lượng tồn</label><input id="product-quantity" className="text-field" type="number" min="0" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity:Math.max(0,Number(event.target.value)) })} /></div><TextInput label="Vị trí kệ" value={draft.location} setValue={(value) => setDraft({ ...draft, location:value })} placeholder="Kệ A-03" /></div>
+      <div className="form-grid"><div><label className="field-label" htmlFor="product-quantity">Số lượng tồn</label><input id="product-quantity" className="text-field" type="number" min="0" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity:Math.max(0,Number(event.target.value)) })} /></div><div><label className="field-label" htmlFor="product-price">Giá (tùy chọn)</label><input id="product-price" className="text-field" type="number" min="0" step="any" value={draft.price ?? ""} onChange={(event) => setDraft({ ...draft, price:event.target.value === "" ? undefined : Math.max(0,Number(event.target.value)) })} /></div></div>
+      <TextInput label="Vị trí kệ" value={draft.location} setValue={(value) => setDraft({ ...draft, location:value })} placeholder="Kệ A-03" />
       <TextInput label="Kích cỡ · phân cách bằng dấu phẩy" value={draft.size.join(", ")} setValue={(value) => setDraft({ ...draft, size:value.split(",") })} placeholder="40, 41, 42" />
       <div><label className="field-label" htmlFor="product-images">Đường dẫn ảnh · mỗi dòng một ảnh</label><textarea id="product-images" className="textarea-field" value={draft.image_urls.filter((url) => !url.startsWith("data:")).join("\n")} onChange={(event) => setDraft({ ...draft, image_urls:[...draft.image_urls.filter((url) => url.startsWith("data:")),...event.target.value.split("\n").map((url) => url.trim()).filter(Boolean)] })} placeholder="https://…" /><label className="quiet-btn upload-label"><Upload /> Tải ảnh từ thiết bị<input type="file" accept="image/*" multiple hidden onChange={(event) => void addImages(event)} /></label><div className="form-help">Tối đa 5 ảnh, mỗi tệp 700 KB khi lưu trên trình duyệt.</div><div className="image-preview-list">{draft.image_urls.map((url,index) => <Image key={`${index}-${url.slice(0,12)}`} src={url} alt={`Ảnh mẫu ${index+1}`} width={80} height={80} unoptimized />)}</div></div>
       <TextArea label="Ghi chú ảnh đính kèm" value={draft.image_notes} setValue={(value) => setDraft({ ...draft, image_notes:value })} placeholder="Tình trạng, màu sắc, chi tiết cần đối chiếu…" />

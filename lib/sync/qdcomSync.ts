@@ -4,9 +4,16 @@ import type { Product, ProductStatus } from "@/types/product";
 
 export interface QDcomSharePayload {
   format: "qdcom-share";
-  version: 1;
-  peer: { peerId: string; displayName: string; email: string; avatar: string };
-  products: Product[];
+  version: 2;
+  peer: { peerId: string; displayName: string; email: string };
+  products: QDcomShareProduct[];
+}
+
+export interface QDcomShareProduct {
+  id: string;
+  name: string;
+  quantity: number;
+  price: number | null;
 }
 
 export interface QDcomBackup {
@@ -29,6 +36,7 @@ function isProduct(value: unknown): value is Product {
   const item = asRecord(value);
   return Boolean(item && text(item.id, 160) && item.id && text(item.name, 300) && text(item.brand, 200) &&
     text(item.color, 200) && stringList(item.size, 100) && Number.isSafeInteger(item.quantity) && Number(item.quantity) >= 0 &&
+    (!("price" in item) || (typeof item.price === "number" && Number.isFinite(item.price) && item.price >= 0)) &&
     imageList(item.image_urls) &&
     text(item.image_notes, 2000) && text(item.description, 4000) && text(item.category, 200) && statuses.has(item.status as ProductStatus) &&
     text(item.location, 300) && text(item.created_by, 200) && text(item.created_at, 100) && text(item.updated_at, 100) &&
@@ -47,16 +55,34 @@ function safeImageUrls(urls: string[]) {
   return urls.filter((url) => !url.startsWith("data:") && (url.startsWith("https://") || url.startsWith("/"))).slice(0, 5);
 }
 
+function isShareProduct(value: unknown): value is QDcomShareProduct {
+  const item = asRecord(value);
+  return Boolean(item && Object.keys(item).length === 4 &&
+    Object.keys(item).every((key) => ["id", "name", "quantity", "price"].includes(key)) &&
+    text(item.id, 160) && item.id && text(item.name, 300) && item.name.trim() &&
+    Number.isSafeInteger(item.quantity) && Number(item.quantity) >= 0 &&
+    (item.price === null || (typeof item.price === "number" && Number.isFinite(item.price) && item.price >= 0)));
+}
+
+function isLegacyShareProducts(value: unknown): value is Product[] {
+  return Array.isArray(value) && value.every(isProduct) &&
+    !value.some((product: Product) => product.image_urls.some((url) => url.startsWith("data:")));
+}
+
+function isShareProducts(value: unknown): value is QDcomShareProduct[] {
+  return Array.isArray(value) && value.every(isShareProduct);
+}
+
 export function createSharePayload(peer: QDcomSharePayload["peer"], products: Product[]): string {
   const payload: QDcomSharePayload = {
     format: "qdcom-share",
-    version: 1,
-    peer,
-    products: products.map((product) => ({ ...product, image_urls: safeImageUrls(product.image_urls) })),
+    version: 2,
+    peer: { peerId: peer.peerId, displayName: peer.displayName, email: peer.email },
+    products: products.map(({ id, name, quantity, price }) => ({ id, name, quantity, price: price ?? null })),
   };
   const serialized = JSON.stringify(payload);
   if (new TextEncoder().encode(serialized).byteLength > 2700) {
-    throw new Error("Mã QR vượt giới hạn dung lượng. Hãy chia sẻ ít mẫu hơn hoặc bỏ ảnh và mô tả dài.");
+    throw new Error("Mã QR vượt giới hạn dung lượng. Hãy chia sẻ ít mẫu hàng hơn.");
   }
   return serialized;
 }
@@ -67,17 +93,50 @@ export function parseSharePayload(raw: string): QDcomSharePayload {
   try { value = JSON.parse(raw); } catch { throw new Error("Mã QR không chứa JSON hợp lệ của Q-Dcom."); }
   const data = asRecord(value);
   const peer = asRecord(data?.peer);
-  if (data?.format !== "qdcom-share" || data.version !== 1 || !peer || !text(peer.peerId, 160) || !peer.peerId ||
-    !text(peer.displayName, 200) || !text(peer.email, 320) || !text(peer.avatar, 2000) ||
-    !Array.isArray(data.products) || data.products.length > 20 || !data.products.every(isProduct) ||
-    data.products.some((product) => product.image_urls.some((url) => url.startsWith("data:")))) {
+  if (data?.format !== "qdcom-share" || !peer || !text(peer.peerId, 160) || !peer.peerId ||
+    !text(peer.displayName, 200) || !text(peer.email, 320) ||
+    !Array.isArray(data.products) || data.products.length > 20) {
     throw new Error("Mã QR không đúng cấu trúc chia sẻ Q-Dcom hoặc chứa dữ liệu không an toàn.");
   }
-  return { format: "qdcom-share", version: 1, peer: { peerId: peer.peerId, displayName: peer.displayName, email: peer.email, avatar: peer.avatar }, products: data.products };
+  if (data.version === 1) {
+    if (!text(peer.avatar, 2000) || !isLegacyShareProducts(data.products)) {
+      throw new Error("Mã QR không đúng cấu trúc chia sẻ Q-Dcom hoặc chứa dữ liệu không an toàn.");
+    }
+    return {
+      format: "qdcom-share",
+      version: 2,
+      peer: { peerId: peer.peerId, displayName: peer.displayName, email: peer.email },
+      products: data.products.map(({ id, name, quantity, price }) => ({ id, name, quantity, price: price ?? null })),
+    };
+  }
+  if (data.version !== 2 || !isShareProducts(data.products)) {
+    throw new Error("Mã QR không đúng cấu trúc chia sẻ Q-Dcom hoặc chứa dữ liệu không an toàn.");
+  }
+  return {
+    format: "qdcom-share",
+    version: 2,
+    peer: { peerId: peer.peerId, displayName: peer.displayName, email: peer.email },
+    products: data.products,
+  };
 }
 
-export function serializeBackup(products: Product[], botVocabulary: BotVocabulary, members: QDcomMember[]): string {
-  return JSON.stringify({ format: "qdcom-backup", version: 1, exportedAt: new Date().toISOString(), products, botVocabulary, members } satisfies QDcomBackup, null, 2);
+export function serializeBackup(
+  products: Product[],
+  botVocabulary: BotVocabulary,
+  members: QDcomMember[],
+  options: { omitBase64Images?: boolean } = {},
+): string {
+  const productsToSerialize = options.omitBase64Images
+    ? products.map((product) => ({ ...product, image_urls: safeImageUrls(product.image_urls) }))
+    : products;
+  return JSON.stringify({
+    format: "qdcom-backup",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    products: productsToSerialize,
+    botVocabulary,
+    members,
+  } satisfies QDcomBackup, null, 2);
 }
 
 export function parseBackup(raw: string): QDcomBackup {
