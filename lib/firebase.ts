@@ -5,6 +5,7 @@ import {
   signInAnonymously as firebaseSignInAnonymously,
   signInWithPopup,
   signOut,
+  type Auth,
   type UserCredential,
 } from "firebase/auth";
 
@@ -25,14 +26,24 @@ export const isFirebaseConfigured = Boolean(
   firebaseConfig.appId,
 );
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+let auth: Auth | undefined;
+
+function getFirebaseAuth(): Auth {
+  if (!isFirebaseConfigured) {
+    throw new Error("Firebase chưa được cấu hình đầy đủ. Hãy kiểm tra các biến NEXT_PUBLIC_FIREBASE_*.");
+  }
+  if (!auth) {
+    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+    auth = getAuth(app);
+  }
+  return auth;
+}
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("https://www.googleapis.com/auth/drive.appdata");
 
 export async function signInWithGooglePopup(): Promise<string> {
-  const result = await signInWithPopup(auth, googleProvider);
+  const result = await signInWithPopup(getFirebaseAuth(), googleProvider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (!credential?.accessToken) {
     throw new Error("Firebase không trả về Google OAuth access token cho Google Drive.");
@@ -41,9 +52,9 @@ export async function signInWithGooglePopup(): Promise<string> {
 }
 
 export function signInAnonymously(): Promise<UserCredential> {
-  return firebaseSignInAnonymously(auth);
+  return firebaseSignInAnonymously(getFirebaseAuth());
 }
 
 export function signOutFirebaseUser(): Promise<void> {
-  return signOut(auth);
+  return signOut(getFirebaseAuth());
 }
