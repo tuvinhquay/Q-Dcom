@@ -13,7 +13,8 @@ export function QrCameraScanner({ onScan, onError }: { onScan: (value: string) =
       fps: 10,
       qrbox: { width: 220, height: 220 },
       aspectRatio: 1,
-      rememberLastUsedCamera: true,
+      videoConstraints: { facingMode: "environment" },
+      rememberLastUsedCamera: false,
     }, false);
     scanner.render((decodedText) => {
       if (handled.current) return;

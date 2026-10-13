@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useGoogleLogin } from "@react-oauth/google";
+import { signInWithGooglePopup } from "@/lib/firebase";
 
 export function GoogleDriveLoginButton({
   label,
@@ -13,24 +13,20 @@ export function GoogleDriveLoginButton({
   onError: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const startLogin = useGoogleLogin({
-    scope: "openid email profile https://www.googleapis.com/auth/drive.appdata",
-    onSuccess: async ({ access_token: accessToken }) => {
-      setBusy(true);
-      try {
-        await onAuthorized(accessToken);
-      } catch (error) {
-        onError(error instanceof Error ? error.message : "Không thể hoàn tất đăng nhập Google.");
-      } finally {
-        setBusy(false);
-      }
-    },
-    onError: () => onError("Google không cấp quyền đăng nhập và lưu backup Drive."),
-    onNonOAuthError: () => onError("Không thể mở cửa sổ đăng nhập Google. Hãy cho phép cửa sổ bật lên rồi thử lại."),
-  });
+  async function startLogin() {
+    setBusy(true);
+    try {
+      const accessToken = await signInWithGooglePopup();
+      await onAuthorized(accessToken);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Không thể hoàn tất đăng nhập Google.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <button className="google-drive-button" type="button" onClick={() => startLogin()} disabled={busy}>
+    <button className="google-drive-button" type="button" onClick={() => void startLogin()} disabled={busy}>
       <svg aria-hidden="true" viewBox="0 0 48 48">
         <path fill="#4285F4" d="M43.6 24.5c0-1.6-.1-3.2-.4-4.7H24v8.9h11a9.4 9.4 0 0 1-4.1 6.2v5.2h6.7c3.9-3.6 6-9 6-15.6Z" />
         <path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.7-5.2c-1.9 1.3-4.1 2.1-6.8 2.1-5.2 0-9.6-3.5-11.2-8.2H5.9v5.4A20 20 0 0 0 24 44Z" />

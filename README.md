@@ -19,16 +19,24 @@ Tạo nhánh cho từng thay đổi, mở pull request vào `main`, review rồi
 
 ## Cấu hình môi trường
 
-Sao chép `.env.example` thành `.env.local`. IndexedDB hoạt động ngay cả khi chưa cấu hình OAuth. Để bật đăng nhập Google, tạo OAuth 2.0 Web Client trong Google Cloud Console, thêm origin ứng dụng vào Authorized JavaScript origins, rồi khai báo:
+Sao chép `.env.example` thành `.env.local` và điền cấu hình Web App từ Firebase project:
 
 ```dotenv
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-oauth-client-id
+NEXT_PUBLIC_FIREBASE_API_KEY=your-firebase-api-key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
+NEXT_PUBLIC_FIREBASE_APP_ID=your-firebase-app-id
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
 ```
 
-Client ID là định danh công khai, không phải client secret. Không đặt secret/token nhạy cảm trong biến `NEXT_PUBLIC_*`. Trên môi trường deploy, khai báo Client ID và các origin OAuth phù hợp trong Google Cloud Console.
+Trong Firebase Console, bật Google và Anonymous trong Authentication > Sign-in method, đồng thời thêm domain ứng dụng vào Authorized domains. Các biến cấu hình Firebase `NEXT_PUBLIC_*` được nhúng vào bundle trình duyệt; không đặt secret/token nhạy cảm vào những biến này. Khai báo các biến tương ứng trong môi trường deploy.
 
-Đăng ký bằng ID, họ tên và chuyên ngành mở dashboard ngay, không cần Google OAuth. Hồ sơ ID được lưu cục bộ và có thể đăng nhập lại trên cùng thiết bị sau khi đăng xuất. Google Login vẫn là một lựa chọn độc lập. Hồ sơ cục bộ không phải xác thực an toàn và không được đồng bộ qua máy chủ.
+Đăng nhập Google dùng Firebase Auth popup và yêu cầu scope `https://www.googleapis.com/auth/drive.appdata` để giữ quyền truy cập vùng dữ liệu ứng dụng trên Google Drive. Bật Google Drive API và, nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console. Token chỉ được giữ trong bộ nhớ ứng dụng khi đồng bộ.
+
+Đăng nhập khách dùng Firebase Anonymous Auth. Đăng ký bằng ID, họ tên và chuyên ngành vẫn mở dashboard ngay, không cần Firebase Auth. Hồ sơ ID được lưu cục bộ và có thể đăng nhập lại trên cùng thiết bị sau khi đăng xuất; hồ sơ cục bộ không phải xác thực an toàn và không được đồng bộ qua máy chủ.
 
 ## Dữ liệu ngoại tuyến
 
@@ -36,7 +44,7 @@ Q-Dcom lưu sản phẩm, từ vựng bot và thành viên trong IndexedDB qua D
 
 Trong Cài đặt, nhập từ/cụm từ mới, chọn ý định số lượng/vị trí/chào hỏi rồi nhấn **Thêm từ**. Câu chào và câu trả lời khi không tìm thấy cũng được lưu trong bảng `botVocabulary`.
 
-QR chia sẻ chứa hồ sơ thành viên và mẫu hàng đã chọn theo giới hạn dung lượng thực của mã; ảnh data URL không nhúng vào QR. Người nhận quét sẽ thêm thành viên và upsert các mẫu trong một transaction. QR là dữ liệu trao đổi trực tiếp, hồ sơ trong QR không phải danh tính được máy chủ xác thực và không có đồng bộ nền tự động giữa thiết bị. Backup JSON bao gồm sản phẩm (kể cả ảnh nhúng), từ vựng và thành viên; file nhập được kiểm tra schema, giới hạn 25 MB và được merge theo ID.
+QR chia sẻ chứa định danh thành viên và chỉ các trường mẫu hàng cơ bản (ID, tên, số lượng, giá); ảnh và mô tả không nhúng vào QR. Người nhận quét sẽ thêm thành viên và upsert các mẫu trong một transaction. QR là dữ liệu trao đổi trực tiếp, hồ sơ trong QR không phải danh tính được máy chủ xác thực và không có đồng bộ nền tự động giữa thiết bị. Backup JSON bao gồm sản phẩm (kể cả ảnh nhúng), từ vựng và thành viên; có thể bật **Nén nhẹ (bỏ dữ liệu ảnh Base64)** khi tải file backup. File nhập được kiểm tra schema, giới hạn 25 MB và được merge theo ID.
 
 PWA dùng `public/manifest.json`, icon SVG placeholder tại `public/icons/` và `public/sw.js`. Đổi icon bằng SVG của riêng bạn hoặc chuyển sang PNG rồi cập nhật loại MIME/đường dẫn trong manifest.
 
@@ -44,11 +52,12 @@ PWA dùng `public/manifest.json`, icon SVG placeholder tại `public/icons/` và
 
 ```text
 app/                         App Router, layout và route trang chính
+  privacy/                   Chính sách bảo mật đầy đủ
 components/
   products/                  ProductCard, ProductImage và trạng thái dùng lại
   search/                    SearchBar dùng lại
   background-video.tsx       Lớp nền video
-  qdcom-app.tsx               Điều phối dashboard/chat/cài đặt
+  qdcom-app.tsx               Điều phối dashboard, các tab và menu Sidebar
 data/mockProducts.ts          Dữ liệu local khởi tạo
 lib/bot/                      Từ điển và parser @q
 lib/db/                       Dexie IndexedDB: products, botVocabulary, members
@@ -63,7 +72,11 @@ SESSION_LOG.md                Lịch sử và handoff giữa các agent
 
 ## Luồng ứng dụng
 
-`app/page.tsx` kết xuất `QDcomApp`. Component điều phối các tab Kho, Tra cứu @q, Tổng quan và Cài đặt. Sản phẩm/từ vựng/thành viên được lưu trong Dexie; hồ sơ ID/Google và tùy chỉnh giao diện được lưu cục bộ. Parser dùng `lib/bot/qBotParser.ts` và `lib/bot/vocabulary.ts`. QR dùng `html5-qrcode`/`qrcode.react`; backup được kiểm tra trong `lib/sync/qdcomSync.ts`.
+`app/page.tsx` kết xuất `QDcomApp`; nội dung Giới thiệu được tích hợp trong ứng dụng, không còn render thêm section bên ngoài dashboard. Sidebar nhóm điều hướng thành Quản lý chính (Mẫu hàng & Kho, Tra cứu @q, Tổng quan kho), Giới thiệu & phát triển dự án (Giới thiệu Q-Dcom, Chính sách bảo mật dữ liệu), Hệ thống (Cài đặt) và các mục xem trước đang phát triển. Các mục xem trước chỉ hiển thị thông báo, chưa điều hướng tới chức năng chưa có.
+
+Các màn hình Kho, Tra cứu @q, Tổng quan kho, Giới thiệu, Chính sách bảo mật tóm tắt và Cài đặt chuyển đổi trong cùng khung dashboard. Tab bảo mật có liên kết tới trang chính sách đầy đủ `/privacy`. Trên di động, thanh điều hướng cuộn ngang để giữ khả năng truy cập mọi tab; mục xem trước vẫn hiện toast. Sản phẩm/từ vựng/thành viên được lưu trong Dexie; hồ sơ ID/Google và tùy chỉnh giao diện được lưu cục bộ. Parser dùng `lib/bot/qBotParser.ts` và `lib/bot/vocabulary.ts`. QR dùng `html5-qrcode`/`qrcode.react`; backup được kiểm tra trong `lib/sync/qdcomSync.ts`.
+
+Sidebar dùng viền gradient, nền kính blur, glow và hiệu ứng trượt vào; mục active/hover có viền sáng và hiệu ứng nổi. Tôn trọng `prefers-reduced-motion` toàn cục để giảm chuyển động khi người dùng đã bật tùy chọn này.
 
 ## Video nền
 
