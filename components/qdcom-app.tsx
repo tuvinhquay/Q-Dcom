@@ -13,6 +13,7 @@ import type { ChangeEvent, CSSProperties, FormEvent, ReactNode } from "react";
 import { startTransition, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { BackgroundVideo } from "@/components/background-video";
+import { CommunityChat } from "@/components/community-chat";
 import { GlassmorphismAnimationBackground } from "@/components/glassmorphism-animation-background";
 import { GoogleDriveLoginButton } from "@/components/google-drive-login-button";
 import { ProductCard } from "@/components/products/ProductCard";
@@ -22,19 +23,20 @@ import { SearchBar } from "@/components/search/SearchBar";
 import { parseQBotQuery } from "@/lib/bot/qBotParser";
 import { copyDefaultVocabulary, type BotIntent, type BotVocabulary } from "@/lib/bot/vocabulary";
 import { qdcomDB, type QDcomMember } from "@/lib/db/qdcomDB";
-import { isFirebaseConfigured, signInAnonymously, signOutFirebaseUser } from "@/lib/firebase";
+import { isFirebaseConfigured, signOutFirebaseUser, type GoogleAuthSession } from "@/lib/firebase";
 import { parseBackup, parseSharePayload, serializeBackup, createSharePayload } from "@/lib/sync/qdcomSync";
-import { syncBackupToGoogleDrive } from "@/lib/sync/googleDriveBackup";
+import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveStorageQuota } from "@/lib/sync/googleDriveBackup";
+import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
 import type { Product, ProductStatus } from "@/types/product";
 
-type PageKey = "inventory" | "bot" | "reports" | "about" | "privacy" | "settings";
+type PageKey = "inventory" | "bot" | "community" | "reports" | "about" | "privacy" | "settings";
 type MenuItem =
   | { id: PageKey; label: string; icon: typeof Package; preview?: false }
   | { id: "food" | "productivity"; label: string; icon: typeof Package; preview: true };
 type ChatMessage = { id: number; role: "user" | "assistant"; text: string; productIds?: string[] };
 type Settings = { videoEnabled: boolean; glassBlur: number; glassOpacity: number; videoTint: string };
-type UserProfile = { peerId: string; googleSub?: string; displayName: string; email: string; avatar: string; memberId?: string; specialty?: string };
+type UserProfile = { peerId: string; googleSub?: string; firebaseUid?: string; displayName: string; email: string; avatar: string; memberId?: string; specialty?: string };
 type ProductDraft = Omit<Product, "created_at" | "updated_at">;
 const SETTINGS_KEY = "qdcom.settings.v1";
 const VOCABULARY_KEY = "qdcom.bot-vocabulary.v1";
@@ -49,6 +51,7 @@ const navGroups: { label: string; items: MenuItem[] }[] = [
     items: [
       { id: "inventory", label: "Mẫu hàng & Kho", icon: LayoutDashboard },
       { id: "bot", label: "Tra cứu @q", icon: MessageCircle },
+      { id: "community", label: "Cộng đồng chat", icon: Users },
       { id: "reports", label: "Tổng quan kho", icon: BarChart3 },
     ],
   },
@@ -71,6 +74,7 @@ const navGroups: { label: string; items: MenuItem[] }[] = [
 const pageNames: Record<PageKey, string> = {
   inventory: "Mẫu hàng & Kho",
   bot: "Tra cứu @q",
+  community: "Cộng đồng chat",
   reports: "Tổng quan kho",
   about: "Giới thiệu Q-Dcom",
   privacy: "Chính sách bảo mật dữ liệu",
@@ -96,6 +100,10 @@ function readLocalMembers(): UserProfile[] {
     typeof profile.peerId === "string" && typeof profile.memberId === "string" &&
     typeof profile.displayName === "string" && typeof profile.specialty === "string" &&
     typeof profile.email === "string" && typeof profile.avatar === "string") : [];
+}
+function formatBytes(value: number) {
+  const gigabytes = value / (1024 ** 3);
+  return `${gigabytes.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} GB`;
 }
 function stockStatus(quantity: number): ProductStatus { return quantity <= 0 ? "out_of_stock" : quantity <= 4 ? "low_stock" : "available"; }
 function newId() { return `qd${Math.random().toString(36).slice(2, 8)}`; }
@@ -139,8 +147,6 @@ export function QDcomApp() {
   const [newIntent, setNewIntent] = useState<Exclude<BotIntent, "SEARCH">>("CHECK_QUANTITY");
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
-  const [authBusy, setAuthBusy] = useState(false);
-  const googleAuthRef = useRef<HTMLDivElement>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareValue, setShareValue] = useState("");
   const [shareSelection, setShareSelection] = useState<string[]>([]);
@@ -150,6 +156,8 @@ export function QDcomApp() {
   const [driveConnected, setDriveConnected] = useState(false);
   const [driveSyncStatus, setDriveSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const [driveSyncMessage, setDriveSyncMessage] = useState("");
+  const [driveQuota, setDriveQuota] = useState<GoogleDriveStorageQuota | null>(null);
+  const [driveQuotaError, setDriveQuotaError] = useState("");
   const messageEnd = useRef<HTMLDivElement>(null);
   const backupInput = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -196,6 +204,7 @@ export function QDcomApp() {
         if (driveAccessToken.current !== accessToken) return;
         setDriveSyncStatus("synced");
         setDriveSyncMessage("");
+        void refreshDriveQuota(accessToken);
       }).catch((error: unknown) => {
         if (driveAccessToken.current !== accessToken) return;
         setDriveSyncStatus("error");
@@ -204,6 +213,15 @@ export function QDcomApp() {
     }, 500);
     return () => window.clearTimeout(timeout);
   }, [members, products, ready, userProfile, vocabulary]);
+  useEffect(() => {
+    if (!userProfile || userProfile.firebaseUid || userProfile.googleSub) return;
+    const warnBeforeExit = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "Hãy nhấn Lưu trữ / Tải về bản sao dữ liệu trước khi thoát.";
+    };
+    window.addEventListener("beforeunload", warnBeforeExit);
+    return () => window.removeEventListener("beforeunload", warnBeforeExit);
+  }, [userProfile]);
   useEffect(() => {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
   }, []);
@@ -278,23 +296,8 @@ export function QDcomApp() {
   function removeWord(intent: Exclude<BotIntent, "SEARCH">, word: string) {
     storeVocabulary({ ...vocabulary, intents: { ...vocabulary.intents, [intent]: vocabulary.intents[intent].filter((item) => item !== word) } });
   }
-  async function handleGuestLogin() {
-    setAuthBusy(true);
-    try {
-      const { user } = await signInAnonymously();
-      const profile: UserProfile = { peerId: user.uid, displayName: "Khách", email: "", avatar: "" };
-      window.localStorage.setItem(PEER_KEY, profile.peerId);
-      window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-      setUserProfile(profile);
-      setPage("inventory");
-      notify("Đang sử dụng Q-Dcom với tư cách khách.");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Không thể đăng nhập khách.");
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-  async function handleGoogleAuthorization(accessToken: string) {
+  async function handleGoogleAuthorization(session: GoogleAuthSession) {
+    const { user, accessToken } = session;
     const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -303,26 +306,50 @@ export function QDcomApp() {
     if (typeof claims.sub !== "string" || typeof claims.email !== "string" || claims.email_verified !== true) {
       throw new Error("Hồ sơ Google chưa xác minh email.");
     }
+    if (user.isAnonymous || !user.providerData.some(({ providerId }) => providerId === "google.com")) {
+      throw new Error("Q-Dcom chỉ cho phép tài khoản Google thực đã xác thực.");
+    }
     if (userProfile?.googleSub && userProfile.googleSub !== claims.sub) {
+      await signOutFirebaseUser();
       throw new Error("Tài khoản Google này khác với tài khoản đang đăng nhập. Hãy chọn đúng tài khoản để đồng bộ dữ liệu.");
     }
-    const peerId = userProfile?.peerId ?? readSaved<string>(PEER_KEY, "") ??
-      (window.crypto.randomUUID?.() ?? `qd-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const memberId = userProfile?.memberId?.trim();
+    const publicMemberId = memberId && memberId.length <= 64 ? memberId : user.uid.slice(0, 16);
+    const profileName = typeof claims.name === "string" ? claims.name : claims.email;
     const profile: UserProfile = {
-      peerId: peerId || (window.crypto.randomUUID?.() ?? `qd-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+      peerId: user.uid,
+      firebaseUid: user.uid,
       googleSub: claims.sub,
-      displayName: typeof claims.name === "string" ? claims.name : claims.email,
+      displayName: profileName,
       email: claims.email,
       avatar: typeof claims.picture === "string" && claims.picture.startsWith("https://") ? claims.picture : "",
+      memberId: publicMemberId,
+      specialty: userProfile?.specialty,
     };
+    try {
+      await savePublicUserProfile(profile.peerId, publicMemberId, profileName.slice(0, 120));
+    } catch (error) {
+      await signOutFirebaseUser();
+      throw error;
+    }
     window.localStorage.setItem(PEER_KEY, profile.peerId);
     window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
     driveAccessToken.current = accessToken;
     setDriveConnected(true);
     setDriveSyncStatus("syncing");
+    setDriveQuota(null);
+    void refreshDriveQuota(accessToken);
     setUserProfile(profile);
     setPage("inventory");
     notify(`Đã đăng nhập Google: ${profile.displayName}. Đang sao lưu dữ liệu lên Google Drive.`);
+  }
+  async function refreshDriveQuota(accessToken: string) {
+    try {
+      setDriveQuota(await getGoogleDriveStorageQuota(accessToken));
+      setDriveQuotaError("");
+    } catch (error) {
+      setDriveQuotaError(error instanceof Error ? error.message : "Không thể tải dung lượng Google Drive.");
+    }
   }
   async function syncCurrentDriveBackup(accessToken: string) {
     const contents = await qdcomDB.transaction("r", qdcomDB.products, qdcomDB.botVocabulary, qdcomDB.members, async () => {
@@ -339,6 +366,7 @@ export function QDcomApp() {
     );
     driveSyncQueue.current = sync;
     await sync;
+    await refreshDriveQuota(accessToken);
   }
   function submitRegistration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -410,6 +438,10 @@ export function QDcomApp() {
     }
   }
   async function logoutProfile() {
+    if (userProfile && !userProfile.firebaseUid && !userProfile.googleSub &&
+      !window.confirm("Hãy nhấn Lưu trữ / Tải về bản sao dữ liệu trước khi thoát. Bạn đã lưu bản sao dữ liệu chưa?")) {
+      return;
+    }
     if (userProfile?.googleSub) {
       const accessToken = driveAccessToken.current;
       if (!accessToken) {
@@ -438,6 +470,8 @@ export function QDcomApp() {
     setDriveConnected(false);
     setDriveSyncStatus("idle");
     setDriveSyncMessage("");
+    setDriveQuota(null);
+    setDriveQuotaError("");
     window.localStorage.removeItem(PROFILE_KEY);
     setUserProfile(null);
     notify("Đã đăng xuất khỏi thiết bị này.");
@@ -597,10 +631,10 @@ export function QDcomApp() {
         {authMode === "login" && <form className="registration-form local-login-form" onSubmit={submitLocalLogin}>
           <label className="auth-field"><span><IdCard /> MÃ ID THÀNH VIÊN</span><input required value={localLoginId} onChange={(event) => setLocalLoginId(event.target.value)} placeholder="Nhập ID đã đăng ký trên thiết bị này" autoComplete="username" /></label>
           <button className="auth-submit" type="submit">XÁC NHẬN <ArrowRight /></button>
-          <p className="local-login-note"><LockKeyhole /> Hồ sơ ID được lưu trên thiết bị này; bạn vẫn có thể đăng nhập riêng bằng Google.</p>
+          <p className="local-login-note"><LockKeyhole /> Hồ sơ ID và kho được lưu trên thiết bị này. Cộng đồng chat cần đăng nhập Google.</p>
         </form>}
         <div className="login-divider"><span>{authMode === "register" ? "HOẶC ĐĂNG KÝ NHANH BẰNG" : "HOẶC ĐĂNG NHẬP NHANH BẰNG"}</span></div>
-        {isFirebaseConfigured ? <div className="google-login-wrap" ref={googleAuthRef}><span className="google-login-label">Đăng nhập và sao lưu an toàn với Google</span><GoogleDriveLoginButton label="Đăng ký / Đăng nhập bằng Google" onAuthorized={handleGoogleAuthorization} onError={notify} /><span className="google-login-caption">Q-Dcom chỉ lưu backup riêng trong vùng dữ liệu ứng dụng trên Google Drive của bạn.</span><button className="guest-login-button" type="button" onClick={() => void handleGuestLogin()} disabled={authBusy}>{authBusy ? "ĐANG ĐĂNG NHẬP…" : "TIẾP TỤC VỚI TƯ CÁCH KHÁCH"}</button></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập cấu hình Firebase Auth và bật đăng nhập Google, ẩn danh trong Firebase Console.</p></div></div>}
+        {isFirebaseConfigured ? <div className="google-login-wrap"><span className="google-login-label">Đăng nhập và sao lưu an toàn với Google</span><GoogleDriveLoginButton label="Đăng ký / Đăng nhập bằng Google" onAuthorized={handleGoogleAuthorization} onError={notify} /><span className="google-login-caption">Firebase chỉ xác thực Google; dữ liệu kho được giữ trong IndexedDB và backup riêng trên Drive.</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập Firebase Auth và bật nhà cung cấp đăng nhập Google.</p></div></div>}
         <button className="auth-mode-toggle" type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); }}>
           {authMode === "register" ? "Đã có tài khoản? Đăng nhập" : "Chưa là thành viên? Đăng ký ngay"}
         </button>
@@ -663,6 +697,13 @@ export function QDcomApp() {
             </section><aside className="chat-aside"><section className="aside-panel glass"><h3>Truy vấn nhanh</h3><div className="query-list">{["@q nike màu đen id 183t1o4","@q 183t1o4 còn mấy đôi","@q 184y99 ở đâu","@q mẫu sắp hết hàng"].map((item) => <button className="query-chip" key={item} onClick={() => askBot(item)}>{item}<ArrowRight /></button>)}</div></section><section className="aside-panel glass"><h3>Q-Dcom hiểu gì?</h3><p className="aside-note">Bot đối chiếu mã hàng, thương hiệu, màu sắc và từ khóa trong danh mục. Câu hỏi về số lượng hoặc vị trí sẽ có câu trả lời ngắn gọn.</p></section><section className="aside-panel glass"><div className="aside-status"><ShieldCheck size={14} /> Tra cứu theo dữ liệu kho hiện tại</div></section></aside></div>
           </>}
 
+          {page === "community" && <>
+            <div className="page-heading"><div><div className="eyebrow"><Users /> Kết nối thành viên</div><h1>Cộng đồng chat</h1><p>Tìm kiếm ID/QR, tạo nhóm và trao đổi tin nhắn. @q chỉ tra cứu dữ liệu IndexedDB cục bộ.</p></div></div>
+            {userProfile.firebaseUid
+              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} />
+              : <section className="community-login-required glass"><LockKeyhole /><div><strong>Cần đăng nhập bằng Google</strong><p>Tài khoản ID cá nhân chỉ hoạt động trên thiết bị này. Đăng nhập Google để sử dụng danh bạ, nhóm và chat Firebase.</p>{isFirebaseConfigured && <GoogleDriveLoginButton label="Đăng nhập Google để kết nối" onAuthorized={handleGoogleAuthorization} onError={notify} />}</div></section>}
+          </>}
+
           {page === "reports" && <>
             <div className="page-heading"><div><div className="eyebrow"><BarChart3 /> Theo dõi vận hành</div><h1>Tổng quan kho</h1><p>Số liệu được tính trực tiếp từ các mẫu hàng đang quản lý.</p></div></div>
             <div className="stat-grid"><StatCard label="Tổng mẫu hàng" value={String(activeProducts.length)} foot="Không tính mẫu đang ẩn" icon={<Package />} /><StatCard label="Đơn vị tồn kho" value={String(quantityTotal)} foot="Tổng số lượng từng mẫu" icon={<Boxes />} /><StatCard label="Cần kiểm tra" value={String(lowStock.length + activeProducts.filter((product) => product.quantity === 0).length)} foot="Mẫu sắp hết hoặc đã hết" icon={<CircleAlert />} /><StatCard label="Kệ đang dùng" value={String(locationCount)} foot="Vị trí có hàng lưu trữ" icon={<MapPin />} /></div>
@@ -672,6 +713,17 @@ export function QDcomApp() {
           {page === "settings" && <>
             <div className="page-heading"><div><div className="eyebrow"><SlidersHorizontal /> Tùy chỉnh không gian</div><h1>Cài đặt chung</h1><p>Hồ sơ nhóm, đồng bộ dữ liệu và giao diện kho.</p></div></div>
             <div className="settings-grid">
+              <section className="settings-card glass wide">
+                <SettingsHead icon={<Upload />} title="Google Drive & bản sao lưu" description="Kho hàng luôn nằm trong IndexedDB. Google Drive chỉ nhận bản sao JSON nén Gzip trong vùng dữ liệu riêng." />
+                <div className="settings-card-body">
+                  {driveQuota ? driveQuota.totalBytes !== null ? <>
+                    <div className="drive-quota-label"><strong>Dung lượng Google Drive</strong><span>{formatBytes(driveQuota.usedBytes)} / {formatBytes(driveQuota.totalBytes)}</span></div>
+                    <progress className="drive-quota-progress" value={Math.min(100, driveQuota.usedBytes / driveQuota.totalBytes * 100)} max={100} aria-label="Dung lượng đã dùng trên Google Drive" />
+                  </> : <p className="aside-note">Đã sử dụng {formatBytes(driveQuota.usedBytes)}. Google không báo giới hạn tổng dung lượng của tài khoản này.</p> : <p className="aside-note">{driveConnected ? driveQuotaError || "Đang tải dung lượng Google Drive…" : "Đăng nhập Google để xem dung lượng Drive và bật sao lưu tự động."}</p>}
+                  {userProfile && !userProfile.firebaseUid && !userProfile.googleSub && <p className="local-backup-warning" role="status">Hãy nhấn Lưu trữ / Tải về bản sao dữ liệu trước khi thoát. Dữ liệu ID cá nhân chỉ tồn tại trên thiết bị này.</p>}
+                  {driveQuotaError && driveConnected && <p className="drive-sync-error" role="alert">{driveQuotaError}</p>}
+                </div>
+              </section>
               <section className="settings-card glass"><SettingsHead icon={<Video />} title="Giao diện & video nền" description="Đăng nhập: public/videos/login-bg-video.mp4 · Ứng dụng: public/videos/app-bg-video.mp4." /><div className="settings-card-body"><SettingSwitch title="Bật video nền" description="Nền tĩnh vẫn hiển thị khi chưa có tệp video." checked={settings.videoEnabled} onClick={() => saveSettings({ ...settings, videoEnabled: !settings.videoEnabled })} /><SettingRange title="Độ mờ kính" value={settings.glassBlur} min={0} max={32} suffix="px" onChange={(value) => saveSettings({ ...settings, glassBlur: value })} /><SettingRange title="Độ trong suốt" value={settings.glassOpacity} min={45} max={95} suffix="%" onChange={(value) => saveSettings({ ...settings, glassOpacity: value })} /><div className="setting-row"><div className="setting-copy"><strong>Màu phủ video</strong><small>Chọn sắc độ phủ nhẹ lên nền.</small></div><input className="tint-input" type="color" value={settings.videoTint} aria-label="Màu phủ video" onChange={(event) => saveSettings({ ...settings, videoTint: event.target.value })} /></div></div></section>
               <section className="settings-card glass"><SettingsHead icon={<Users />} title="Tài khoản & hồ sơ" description="Hồ sơ được lưu trên thiết bị và chia sẻ qua mã QR." /><div className="settings-card-body">{userProfile ? <><div className="google-profile"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile.displayName}</strong><span>{userProfile.memberId ? `ID: ${userProfile.memberId}` : userProfile.email || "Khách"}</span></div></div>{userProfile.googleSub && (!driveConnected || driveSyncStatus === "error") && isFirebaseConfigured && <GoogleDriveLoginButton label="Kết nối lại Google Drive" onAuthorized={handleGoogleAuthorization} onError={notify} />}{driveSyncStatus === "error" && <p className="drive-sync-error" role="alert">{driveSyncMessage}</p>}<button type="button" className="secondary-btn" onClick={() => void logoutProfile()}><LogOut /> Đăng xuất</button></> : <p className="aside-note">Đăng nhập để quản lý hồ sơ và bật đồng bộ dữ liệu.</p>}</div></section>
               <section className="settings-card glass wide"><SettingsHead icon={<QrCode />} title="Trung tâm Đồng bộ & Thành viên Q-Dcom" description="Kết bạn và chuyển mẫu hàng trực tiếp bằng QR; backup đầy đủ bằng file JSON." /><div className="settings-card-body"><div className="sync-actions"><button type="button" className="primary-btn" onClick={openShareDialog}><QrCode /> Tạo mã QR chia sẻ</button><button type="button" className="secondary-btn" onClick={() => { setSyncError(""); setScannerOpen(true); }}><Camera /> Mở Camera Quét QR</button><button type="button" className="secondary-btn" onClick={() => void exportBackup()}><Download /> Xuất File Backup</button><button type="button" className="secondary-btn" onClick={() => backupInput.current?.click()}><Upload /> Nhập File Backup</button><input ref={backupInput} type="file" accept="application/json,.json" hidden onChange={(event) => void importBackup(event)} /></div><label className="backup-option"><input type="checkbox" checked={omitBackupImages} onChange={(event) => setOmitBackupImages(event.target.checked)} /><span><strong>Nén nhẹ (bỏ dữ liệu ảnh Base64)</strong><small>Áp dụng cho file backup JSON tải xuống; ảnh liên kết ngoài vẫn được giữ.</small></span></label><div><div className="field-label">Thành viên nhóm Q-Dcom · {members.length}</div>{members.length ? <div className="members-list">{members.map((member) => <div className="member-row" key={member.peerId}><MemberAvatar member={member} /><span className="member-copy"><strong>{member.displayName}</strong><small>{member.email || "Thành viên Q-Dcom"}</small></span><small className="member-date">{new Date(member.addedAt).toLocaleDateString("vi-VN")}</small></div>)}</div> : <p className="aside-note">Chưa có thành viên. Quét mã QR của một thành viên để thêm vào danh sách.</p>}</div></div></section>
