@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithGooglePopup } from "@/lib/firebase";
+import { signInWithGooglePopup, type GoogleAuthSession } from "@/lib/firebase";
 
 export function GoogleDriveLoginButton({
   label,
@@ -9,15 +9,15 @@ export function GoogleDriveLoginButton({
   onError,
 }: {
   label: string;
-  onAuthorized: (accessToken: string) => Promise<void>;
+  onAuthorized: (session: GoogleAuthSession) => Promise<void>;
   onError: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   async function startLogin() {
     setBusy(true);
     try {
-      const accessToken = await signInWithGooglePopup();
-      await onAuthorized(accessToken);
+      const session = await signInWithGooglePopup();
+      await onAuthorized(session);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Không thể hoàn tất đăng nhập Google.");
     } finally {

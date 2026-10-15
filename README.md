@@ -32,15 +32,17 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your-firebase-app-id
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
 ```
 
-Trong Firebase Console, bật Google và Anonymous trong Authentication > Sign-in method, đồng thời thêm domain ứng dụng vào Authorized domains. Các biến cấu hình Firebase `NEXT_PUBLIC_*` được nhúng vào bundle trình duyệt; không đặt secret/token nhạy cảm vào những biến này. Khai báo các biến tương ứng trong môi trường deploy.
+Trong Firebase Console, chỉ bật Google trong Authentication > Sign-in method, đồng thời thêm domain ứng dụng vào Authorized domains. Anonymous Auth không được sử dụng; Firestore rules từ chối mọi phiên anonymous. Các biến cấu hình Firebase `NEXT_PUBLIC_*` được nhúng vào bundle trình duyệt; không đặt secret/token nhạy cảm vào những biến này. Khai báo các biến tương ứng trong môi trường deploy.
 
-Đăng nhập Google dùng Firebase Auth popup và yêu cầu scope `https://www.googleapis.com/auth/drive.appdata` để giữ quyền truy cập vùng dữ liệu ứng dụng trên Google Drive. Bật Google Drive API và, nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console. Token chỉ được giữ trong bộ nhớ ứng dụng khi đồng bộ.
+Đăng nhập Google dùng Firebase Auth popup và yêu cầu scope `drive.appdata` để lưu backup trong vùng dữ liệu riêng, cùng `drive.metadata.readonly` để đọc thanh dung lượng Drive. Bật Google Drive API và, nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console. Token chỉ được giữ trong bộ nhớ ứng dụng khi đồng bộ.
 
-Đăng nhập khách dùng Firebase Anonymous Auth. Đăng ký bằng ID, họ tên và chuyên ngành vẫn mở dashboard ngay, không cần Firebase Auth. Hồ sơ ID được lưu cục bộ và có thể đăng nhập lại trên cùng thiết bị sau khi đăng xuất; hồ sơ cục bộ không phải xác thực an toàn và không được đồng bộ qua máy chủ.
+Firebase Auth là hộ chiếu Google cho danh bạ và chat. Đăng ký/đăng nhập bằng ID cá nhân vẫn hoạt động ngoại tuyến nhưng hồ sơ chỉ nằm trên thiết bị; hồ sơ này không cấp quyền Firebase và không được đồng bộ qua máy chủ.
 
 ## Dữ liệu ngoại tuyến
 
-Q-Dcom lưu sản phẩm, từ vựng bot và thành viên trong IndexedDB qua Dexie (`QDcom_Offline_DB`). Lần mở đầu tạo dữ liệu từ `data/mockProducts.ts`; dữ liệu sản phẩm/từ vựng localStorage cũ được nhập khi tạo cơ sở dữ liệu. Service worker cache app shell và tài nguyên cùng origin sau lần tải trực tuyến đầu tiên. Camera và Google OAuth cần HTTPS hoặc localhost; IndexedDB và các màn kho/bot/báo cáo vẫn dùng offline.
+Q-Dcom lưu sản phẩm, từ vựng bot và thành viên trong IndexedDB qua Dexie (`QDcom_Offline_DB`). Lần mở đầu tạo dữ liệu từ `data/mockProducts.ts`; dữ liệu sản phẩm/từ vựng localStorage cũ được nhập khi tạo cơ sở dữ liệu. Google Drive nhận bản backup JSON/Gzip tự động trong vùng `appDataFolder`; Cài đặt hiển thị dung lượng Drive và cho tải file JSON về máy. Service worker cache app shell và tài nguyên cùng origin sau lần tải trực tuyến đầu tiên. Camera và Google OAuth cần HTTPS hoặc localhost; IndexedDB và các màn kho/bot/báo cáo vẫn dùng offline.
+
+Firestore chỉ chứa hồ sơ công khai tối thiểu (mã thành viên, họ tên), nhóm/phòng chat, yêu cầu tham gia và tin nhắn. Kho hàng và lịch sử nghiệp vụ không được ghi lên Firestore. Tin nhắn `@q` lưu câu hỏi; mỗi thiết bị tự truy vấn IndexedDB và dựng thẻ kết quả cục bộ, không phát tán số lượng/vị trí hàng qua máy chủ. Xem [firestore.rules](firestore.rules) và `lib/services/gatekeeperService.ts` để biết giới hạn truy cập.
 
 Trong Cài đặt, nhập từ/cụm từ mới, chọn ý định số lượng/vị trí/chào hỏi rồi nhấn **Thêm từ**. Câu chào và câu trả lời khi không tìm thấy cũng được lưu trong bảng `botVocabulary`.
 

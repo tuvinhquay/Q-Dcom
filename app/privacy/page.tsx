@@ -20,21 +20,21 @@ const policySections = [
     title: "Thu thập thông tin",
     icon: Cloud,
     content:
-      "App Q-Dcom chỉ yêu cầu quyền đăng nhập Google và truy cập Google Drive để xác thực tài khoản và sao lưu/đồng bộ dữ liệu quản lý kho của chính bạn.",
+      "Firebase Auth xác thực tài khoản Google. Firestore chỉ lưu mã thành viên, họ tên công khai, nhóm/phòng chat, yêu cầu tham gia và nội dung tin nhắn; anonymous login không được chấp nhận.",
   },
   {
     number: "02",
     title: "Sử dụng dữ liệu",
     icon: Boxes,
     content:
-      "Dữ liệu sao lưu trên Google Drive hoàn toàn thuộc sở hữu của người dùng. Chúng tôi cam kết không lưu trữ trái phép, không chia sẻ hoặc bán thông tin của bạn cho bên thứ ba.",
+      "Kho hàng, từ vựng @q và dữ liệu nghiệp vụ được lưu trong IndexedDB trên thiết bị. Bản sao JSON/Gzip có thể được đồng bộ vào appDataFolder riêng trên Google Drive; chat được chia sẻ với các thành viên phòng.",
   },
   {
     number: "03",
     title: "An toàn bảo mật",
     icon: LockKeyhole,
     content:
-      "Mọi thao tác kết nối đều thực hiện qua cổng xác thực chính thức của Google OAuth.",
+      "Quy tắc Firestore chỉ cấp quyền đọc/gửi tin nhắn cho thành viên phòng và giới hạn cập nhật nhóm cho trưởng nhóm. Kết quả @q được dựng cục bộ; dữ liệu sản phẩm không gửi lên Firestore.",
   },
 ];
 
@@ -55,7 +55,7 @@ export default function PrivacyPage() {
           <h1>CHÍNH SÁCH BẢO MẬT - APP Q-DCOM</h1>
           <p className="privacy-intro">
             Chúng tôi tôn trọng quyền riêng tư và quyền kiểm soát dữ liệu của bạn.
-            Chính sách dưới đây mô tả cách Q-Dcom sử dụng quyền Google để hỗ trợ bạn.
+            Chính sách dưới đây mô tả cách Q-Dcom dùng Firebase, IndexedDB và Google Drive để hỗ trợ bạn.
           </p>
 
           <div className="privacy-sections">

@@ -2,12 +2,12 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
-  signInAnonymously as firebaseSignInAnonymously,
   signInWithPopup,
   signOut,
   type Auth,
-  type UserCredential,
+  type User,
 } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -27,34 +27,52 @@ export const isFirebaseConfigured = Boolean(
 );
 
 let auth: Auth | undefined;
+let firestore: Firestore | undefined;
 
-function getFirebaseAuth(): Auth {
+function getFirebaseApp() {
   if (!isFirebaseConfigured) {
     throw new Error("Firebase chưa được cấu hình đầy đủ. Hãy kiểm tra các biến NEXT_PUBLIC_FIREBASE_*.");
   }
-  if (!auth) {
-    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-    auth = getAuth(app);
-  }
+  return getApps().length ? getApp() : initializeApp(firebaseConfig);
+}
+
+export function getFirebaseAuth(): Auth {
+  auth ??= getAuth(getFirebaseApp());
   return auth;
+}
+
+export function getFirebaseFirestore(): Firestore {
+  firestore ??= getFirestore(getFirebaseApp());
+  return firestore;
 }
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("https://www.googleapis.com/auth/drive.appdata");
+googleProvider.addScope("https://www.googleapis.com/auth/drive.metadata.readonly");
+googleProvider.setCustomParameters({ prompt: "select_account" });
 
-export async function signInWithGooglePopup(): Promise<string> {
+export interface GoogleAuthSession {
+  user: User;
+  accessToken: string;
+}
+
+export async function signInWithGooglePopup(): Promise<GoogleAuthSession> {
   const result = await signInWithPopup(getFirebaseAuth(), googleProvider);
+  const user = result.user;
+  if (user.isAnonymous || !user.providerData.some(({ providerId }) => providerId === GoogleAuthProvider.PROVIDER_ID)) {
+    await signOut(getFirebaseAuth());
+    throw new Error("Q-Dcom chỉ cho phép đăng nhập bằng tài khoản Google.");
+  }
+
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (!credential?.accessToken) {
+    await signOut(getFirebaseAuth());
     throw new Error("Firebase không trả về Google OAuth access token cho Google Drive.");
   }
-  return credential.accessToken;
+  return { user, accessToken: credential.accessToken };
 }
 
-export function signInAnonymously(): Promise<UserCredential> {
-  return firebaseSignInAnonymously(getFirebaseAuth());
-}
-
-export function signOutFirebaseUser(): Promise<void> {
-  return signOut(getFirebaseAuth());
+export async function signOutFirebaseUser(): Promise<void> {
+  if (!isFirebaseConfigured || !getApps().length) return;
+  await signOut(getFirebaseAuth());
 }

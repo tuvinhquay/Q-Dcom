@@ -1,8 +1,20 @@
 # Nhật ký phát triển Q-Dcom
 
 - Đã cấu hình Firebase Auth bằng các biến `NEXT_PUBLIC_FIREBASE_*` trong `.env.local` và `.env.example`.
-- Đăng nhập Google dùng Firebase popup, yêu cầu thêm quyền `drive.appdata`, xác minh hồ sơ Google và chuyển thẳng đến trang kho; đăng nhập khách dùng Firebase Anonymous Auth.
-- Dữ liệu sản phẩm, từ vựng Bot và danh sách thành viên được tự động sao lưu thành `Q-Dcom_Backup.json` trong vùng `appDataFolder` riêng tư của người dùng. Thay đổi được gom trong 500 ms; khi đăng xuất, ứng dụng chờ backup cuối cùng hoàn tất.
+- Chỉ tài khoản Google thật được cấp Firebase Auth; Anonymous Auth bị chặn. ID cá nhân vẫn dùng được ngoại tuyến nhưng không cấp quyền truy cập cộng đồng.
+- Kho, từ vựng Bot và dữ liệu thành viên ở IndexedDB; backup JSON/Gzip tự đồng bộ thành `Q-Dcom_Backup.json.gz` trong vùng `appDataFolder` riêng tư. Thay đổi được gom trong 500 ms; khi đăng xuất, ứng dụng chờ backup cuối cùng hoàn tất.
+- Firestore giữ hồ sơ công khai tối thiểu, nhóm/phòng chat, yêu cầu tham gia và tin nhắn. @q gửi câu hỏi trong chat nhưng tra cứu dữ liệu kho cục bộ, không ghi kết quả sản phẩm lên Firestore.
 - Token OAuth chỉ tồn tại trong bộ nhớ; nếu tải lại trang hoặc token hết hạn, hãy kết nối lại Google Drive trong Cài đặt. Nếu backup khi đăng xuất gặp lỗi, ứng dụng giữ trạng thái đăng nhập và hiển thị lỗi.
 - Giao diện đăng ký có nền glow/wave chuyển động, placeholder để thay bằng video MP4 xuyên thấu và card kính mờ với nền `rgba(15, 23, 42, 0.55)`, blur `20px`, viền trắng 18%.
-- Triển khai thực tế cần bật Google và Anonymous trong Firebase Authentication, thêm domain ứng dụng vào Authorized domains, bật Google Drive API và cấu hình OAuth consent screen cho scope `drive.appdata`.
+- Triển khai thực tế cần bật Google (không bật Anonymous như một luồng đăng nhập ứng dụng) trong Firebase Authentication, deploy `firestore.rules`, thêm domain ứng dụng vào Authorized domains, bật Google Drive API và cấu hình OAuth consent screen cho scope `drive.appdata`.
+
+## Tiến độ phiên làm việc — 15/10/2026
+
+- Hoàn thiện định hướng Local-First: IndexedDB là nơi lưu dữ liệu nghiệp vụ; Firebase Auth xác thực Google; Firestore chỉ quản lý hồ sơ công khai, nhóm, yêu cầu tham gia và tin nhắn.
+- Bổ sung Firestore security rules và cấu hình `firebase.json`; cấm anonymous login và giới hạn quyền đọc/ghi theo chủ sở hữu, trưởng nhóm và thành viên phòng chat.
+- Tích hợp backup Google Drive dạng JSON/Gzip, hiển thị dung lượng Drive và cảnh báo sao lưu cho tài khoản ID cá nhân khi đăng xuất hoặc thoát.
+- Bổ sung chat cộng đồng kiểu Telegram với tìm người dùng, chat riêng, tạo nhóm, mã QR/mã mời, duyệt yêu cầu và gỡ thành viên.
+- Tích hợp truy vấn `@q` trong chat: câu trả lời được tạo từ dữ liệu IndexedDB trên thiết bị, không tải dữ liệu kho lên Firestore.
+- Đã xác nhận `npm run lint`, `npx tsc --noEmit --pretty false`, `npm run build`, và nạp rules bằng Firebase Emulator thành công.
+- Đã khởi chạy máy chủ phát triển bằng `npm run dev`; địa chỉ cục bộ: `http://localhost:3000`.
+- Chưa triển khai rules lên Firebase production; cần cấu hình dự án/Google OAuth thực tế trước khi deploy.
