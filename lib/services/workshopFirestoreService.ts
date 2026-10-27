@@ -19,7 +19,7 @@ function requireTenant(principal: TenantPrincipal, tenantId: string): void {
 
 export async function listWorkshopPurchaseOrders(principal: TenantPrincipal): Promise<PurchaseOrder[]> {
   const snapshot = await getDocs(query(tenantCollection(principal.tenantId, "purchaseOrders"), where("tenantId", "==", principal.tenantId), orderBy("dueAt", "asc")));
-  const orders = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data(), operationRates: [] } as PurchaseOrder));
+  const orders = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data(), operationRates: [] } as unknown as PurchaseOrder));
   if (principal.role !== "admin") return orders;
   const ratesSnapshot = await getDocs(query(tenantCollection(principal.tenantId, "operationRates"), where("tenantId", "==", principal.tenantId)));
   const ratesByOrder = new Map<string, PurchaseOrder["operationRates"]>();
@@ -92,7 +92,7 @@ export async function submitWorkshopProduction(principal: TenantPrincipal, entry
   if (principal.role !== "worker" || entry.workerUid !== principal.uid) throw new Error("Chỉ công nhân được gửi sản lượng của chính mình.");
   requireTenant(principal, entry.tenantId);
   if (!Number.isSafeInteger(entry.quantity) || entry.quantity <= 0) throw new Error("Sản lượng phải là số nguyên lớn hơn 0.");
-  const entryRef = doc(collection(tenantCollection(principal.tenantId, "productionEntries")));
+  const entryRef = doc(tenantCollection(principal.tenantId, "productionEntries"));
   await setDoc(entryRef, { ...entry, id: entryRef.id, tenantId: principal.tenantId, status: "pending", submittedAt: serverTimestamp() });
 }
 
@@ -115,7 +115,7 @@ export async function submitWorkshopExtra(principal: TenantPrincipal, extra: Omi
   if (principal.role !== "worker" || extra.workerUid !== principal.uid) throw new Error("Chỉ công nhân được gửi phụ phí của chính mình.");
   requireTenant(principal, extra.tenantId);
   if (!Number.isFinite(extra.amount) || extra.amount < 0 || !extra.description.trim()) throw new Error("Khoản phụ phí chưa hợp lệ.");
-  const extraRef = doc(collection(tenantCollection(principal.tenantId, "workerExtras")));
+  const extraRef = doc(tenantCollection(principal.tenantId, "workerExtras"));
   await setDoc(extraRef, { ...extra, id: extraRef.id, tenantId: principal.tenantId, status: "pending", submittedAt: serverTimestamp() });
 }
 
