@@ -254,8 +254,10 @@ service cloud.firestore {
       }
 
       match /operationRates/{rateId} {
-        allow read, write: if isTenantAdmin(tenantId)
-          && (!('tenantId' in request.resource.data) || request.resource.data.tenantId == tenantId);
+        allow read: if isTenantAdmin(tenantId);
+        allow create, update: if isTenantAdmin(tenantId)
+          && request.resource.data.tenantId == tenantId;
+        allow delete: if isTenantAdmin(tenantId) && resource.data.tenantId == tenantId;
       }
 
       match /productionEntries/{entryId} {
