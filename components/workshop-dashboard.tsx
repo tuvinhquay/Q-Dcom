@@ -7,6 +7,7 @@ import { AlertTriangle, Camera, Clock3, Factory, MessageCircle, Plus, RefreshCw,
 import { getFirebaseAuth, isFirebaseConfigured, signInWithGooglePopup, signOutFirebaseUser } from "@/lib/firebase";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { createTenant, getTenantPrincipal } from "@/lib/services/tenantService";
+import { setActiveTenantId } from "@/lib/tenancy/activeTenant";
 import {
   addWorkshopWorker, answerWorkshopQBot, deleteWorkshopPurchaseOrder, getMyEarnings, getWorkshopSettings,
   listWorkshopExtras, listWorkshopMembers, listWorkshopProductionEntries, listWorkshopPurchaseOrders,
