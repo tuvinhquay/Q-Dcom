@@ -168,7 +168,7 @@ export async function addWorkshopWorker(principal: TenantPrincipal, input: { uid
   if (!uid || !displayName || !employeeCode) throw new Error("Cần nhập UID Google, tên công nhân và mã thẻ.");
   const memberRef = doc(tenantCollection(principal.tenantId, "members"), uid);
   await setDoc(memberRef, {
-    id: uid, tenantId: principal.tenantId, uid, role: "worker", displayName, employeeCode,
+    tenantId: principal.tenantId, uid, role: "worker", displayName, employeeCode,
     active: true, createdAt: serverTimestamp(),
   });
 }
