@@ -311,6 +311,12 @@ service cloud.firestore {
         // Individual earnings are private to the worker; client-side Admin access is denied.
         allow read: if isTenantMember(tenantId) && request.auth.uid == workerUid;
         allow create, update, delete: if false;
+
+        match /periods/{periodId} {
+          allow read: if isTenantMember(tenantId) && request.auth.uid == workerUid
+            && resource.data.tenantId == tenantId;
+          allow create, update, delete: if false;
+        }
       }
 
       match /settings/{settingId} {
