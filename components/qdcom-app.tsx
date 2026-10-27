@@ -30,6 +30,8 @@ import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveSt
 import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
 import { getActiveTenantId, subscribeActiveTenantChange } from "@/lib/tenancy/activeTenant";
+import { getTenantPrincipal } from "@/lib/services/tenantService";
+import type { TenantRole } from "@/types/tenant";
 import type { Product, ProductStatus } from "@/types/product";
 
 type PageKey = "inventory" | "bot" | "community" | "reports" | "workshop" | "about" | "privacy" | "settings";
@@ -130,6 +132,7 @@ export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("local-default");
+  const [activeTenantRole, setActiveTenantRole] = useState<TenantRole>("worker");
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
@@ -179,7 +182,7 @@ export function QDcomApp() {
       setMessages(savedMessages.length ? savedMessages : [{ id: Date.now(), role: "assistant", text: "Chào bạn! Mình là Q-Dcom Bot. Nhập mã mẫu, tên hàng hoặc vị trí kệ để bắt đầu tra cứu." }]);
     });
     const initialTenantId = getActiveTenantId();
-    setActiveTenantId(initialTenantId);
+    startTransition(() => setActiveTenantId(initialTenantId));
     const unsubscribeTenant = subscribeActiveTenantChange((tenantId) => {
       setActiveTenantId(tenantId);
       setSelectedId(null);
@@ -197,6 +200,20 @@ export function QDcomApp() {
       .finally(() => setReady(true));
     return unsubscribeTenant;
   }, []);
+  useEffect(() => {
+    const uid = userProfile?.firebaseUid;
+    if (!uid || activeTenantId === "local-default") {
+      setActiveTenantRole("worker");
+      return;
+    }
+    let cancelled = false;
+    void getTenantPrincipal(uid, activeTenantId).then((principal) => {
+      if (!cancelled) setActiveTenantRole(principal.role);
+    }).catch(() => {
+      if (!cancelled) setActiveTenantRole("worker");
+    });
+    return () => { cancelled = true; };
+  }, [activeTenantId, userProfile?.firebaseUid]);
   useEffect(() => {
     if (messages.length) window.localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-80)));
     messageEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -292,7 +309,7 @@ export function QDcomApp() {
   function askBot(text: string) {
     const clean = text.trim(); if (!clean) return;
     appendMessage("user", clean);
-    const answer = parseQBotQuery(clean, products, vocabulary, { tenantId: activeTenantId, role: "worker", uid: userProfile?.firebaseUid ?? userProfile?.peerId });
+    const answer = parseQBotQuery(clean, products, vocabulary, { tenantId: activeTenantId, role: activeTenantRole, uid: userProfile?.firebaseUid ?? userProfile?.peerId });
     appendMessage("assistant", answer.message, answer.products.map((product) => product.id));
     setBotInput(""); setPage("bot");
   }
@@ -715,7 +732,7 @@ export function QDcomApp() {
           {page === "community" && <>
             <div className="page-heading"><div><div className="eyebrow"><Users /> Kết nối thành viên</div><h1>Cộng đồng chat</h1><p>Tìm kiếm ID/QR, tạo nhóm và trao đổi tin nhắn. @q chỉ tra cứu dữ liệu IndexedDB cục bộ.</p></div></div>
             {userProfile.firebaseUid
-              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} tenantId={activeTenantId} role="worker" />
+              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} tenantId={activeTenantId} role={activeTenantRole} />
               : <section className="community-login-required glass"><LockKeyhole /><div><strong>Cần đăng nhập bằng Google</strong><p>Tài khoản ID cá nhân chỉ hoạt động trên thiết bị này. Đăng nhập Google để sử dụng danh bạ, nhóm và chat Firebase.</p>{isFirebaseConfigured && <GoogleDriveLoginButton label="Đăng nhập Google để kết nối" onAuthorized={handleGoogleAuthorization} onError={notify} />}</div></section>}
           </>}
 
