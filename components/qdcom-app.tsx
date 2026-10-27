@@ -226,8 +226,8 @@ export function QDcomApp() {
     const timeout = window.setTimeout(() => {
       setDriveSyncStatus("syncing");
       const sync = driveSyncQueue.current.then(
-        () => syncBackupToGoogleDrive(accessToken, contents),
-        () => syncBackupToGoogleDrive(accessToken, contents),
+        () => syncBackupToGoogleDrive(accessToken, contents, activeTenantId),
+        () => syncBackupToGoogleDrive(accessToken, contents, activeTenantId),
       );
       driveSyncQueue.current = sync;
       void sync.then(() => {
