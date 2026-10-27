@@ -256,7 +256,15 @@ service cloud.firestore {
       match /operationRates/{rateId} {
         allow read: if isTenantAdmin(tenantId);
         allow create, update: if isTenantAdmin(tenantId)
-          && request.resource.data.tenantId == tenantId;
+          && request.resource.data.tenantId == tenantId
+          && request.resource.data.purchaseOrderId is string
+          && exists(/databases/$(database)/documents/tenants/$(tenantId)/purchaseOrders/$(request.resource.data.purchaseOrderId))
+          && request.resource.data.operationId is string
+          && request.resource.data.operationId.size() > 0
+          && request.resource.data.operationName is string
+          && request.resource.data.operationName.size() > 0
+          && request.resource.data.unitRate is number
+          && request.resource.data.unitRate >= 0;
         allow delete: if isTenantAdmin(tenantId) && resource.data.tenantId == tenantId;
       }
 
