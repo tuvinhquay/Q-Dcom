@@ -3,6 +3,9 @@ import {
   setDoc, updateDoc, where, writeBatch, type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
+import { parseQBotQuery } from "@/lib/bot/qBotParser";
+import { canAskQBot, classifyQBotPermission } from "@/lib/tenancy/authorization";
+import type { Product } from "@/types/product";
 import type { PurchaseOrder, ProductionEntry, TenantMembership, TenantOperationsSettings, WorkerExtra } from "@/types/tenant";
 import type { TenantPrincipal } from "@/lib/tenancy/authorization";
 
@@ -205,4 +208,58 @@ export async function sendWorkshopMessage(principal: TenantPrincipal, senderName
     text,
     createdAt: serverTimestamp(),
   });
+}
+
+/** Produces a local-only answer for the signed-in member; the answer is never written to shared chat. */
+export async function answerWorkshopQBot(principal: TenantPrincipal, question: string, products: Product[]): Promise<string> {
+  const permission = classifyQBotPermission(question);
+  if (["financial_detail", "other_worker_earnings", "confidential_document"].includes(permission)) {
+    return "Từ chối vì lý do bảo mật: Q-Bot không cung cấp thu nhập cá nhân của người khác hoặc tài liệu mật.";
+  }
+  if (principal.role === "worker" && permission === "tenant_overview") {
+    return "Bạn không có quyền xem báo cáo tổng hợp hoặc dữ liệu vận hành toàn xưởng.";
+  }
+
+  if (permission === "personal_wallet") {
+    if (principal.role !== "worker") return "Q-Bot không cung cấp ví cá nhân qua chat cho vai trò này.";
+    const wallet = await getMyEarnings(principal);
+    return `Ví cá nhân của bạn: ${wallet.approvedQuantity.toLocaleString("vi-VN")} sản phẩm đã duyệt, thu nhập đã duyệt ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(wallet.approvedEarnings)}.`;
+  }
+
+  if (permission === "operation_procedure") {
+    return "Chưa có tài liệu quy trình công đoạn được cấu hình cho xưởng này. Hãy nhờ Admin bổ sung hướng dẫn đã được duyệt.";
+  }
+
+  const inventoryAnswer = parseQBotQuery(question, products, undefined, {
+    tenantId: principal.tenantId, role: principal.role, uid: principal.uid,
+  });
+  if (inventoryAnswer.products.length) return inventoryAnswer.message;
+  if (permission === "inventory_lookup") return inventoryAnswer.message;
+
+  if (principal.role === "admin" && permission === "tenant_overview") {
+    const [orders, entries] = await Promise.all([
+      listWorkshopPurchaseOrders(principal),
+      listWorkshopProductionEntries(principal),
+    ]);
+    const approved = entries.filter((entry) => entry.status === "approved");
+    const total = approved.reduce((sum, entry) => sum + entry.quantity, 0);
+    const workerTotals = new Map<string, { name: string; quantity: number }>();
+    for (const entry of approved) {
+      const item = workerTotals.get(entry.workerUid) ?? { name: entry.workerName, quantity: 0 };
+      item.quantity += entry.quantity;
+      workerTotals.set(entry.workerUid, item);
+    }
+    const top = [...workerTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 3)
+      .map((worker, index) => `${index + 1}. ${worker.name}: ${worker.quantity} sản phẩm`).join("; ");
+    if (/po|don hang|danh sach/i.test(question.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) {
+      const list = orders.slice(0, 10).map((order) => `${order.poCode} · ${order.productName} · hạn ${order.dueAt}`).join("\n");
+      return `Xưởng có ${orders.length} PO. ${list || "Chưa có PO."}`;
+    }
+    return `Báo cáo xưởng ${principal.tenantId}: ${orders.length} PO; ${total.toLocaleString("vi-VN")} sản phẩm đã được duyệt. Năng suất nổi bật: ${top || "chưa có dữ liệu"}.`;
+  }
+
+  const policy = canAskQBot(principal, question);
+  return policy.allowed
+    ? inventoryAnswer.message
+    : policy.reason ?? "Q-Bot không thể trả lời yêu cầu này với quyền hiện tại.";
 }
