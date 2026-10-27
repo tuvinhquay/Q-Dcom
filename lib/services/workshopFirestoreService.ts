@@ -1,6 +1,6 @@
 import {
-  collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp,
-  setDoc, updateDoc, where, writeBatch,
+  addDoc, collection, doc, getDoc, getDocs, limitToLast, onSnapshot, orderBy, query, serverTimestamp,
+  setDoc, updateDoc, where, writeBatch, type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import type { PurchaseOrder, ProductionEntry, TenantMembership, TenantOperationsSettings, WorkerExtra } from "@/types/tenant";
@@ -170,5 +170,39 @@ export async function addWorkshopWorker(principal: TenantPrincipal, input: { uid
   await setDoc(memberRef, {
     tenantId: principal.tenantId, uid, role: "worker", displayName, employeeCode,
     active: true, createdAt: serverTimestamp(),
+  });
+}
+
+export interface WorkshopMessage {
+  id: string;
+  tenantId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt?: unknown;
+}
+
+export function watchWorkshopMessages(
+  principal: TenantPrincipal,
+  onChange: (messages: WorkshopMessage[]) => void,
+  onError: (error: Error) => void,
+): Unsubscribe {
+  const messages = collection(db(), "tenants", principal.tenantId, "rooms", "main", "messages");
+  return onSnapshot(
+    query(messages, where("tenantId", "==", principal.tenantId), orderBy("createdAt", "asc"), limitToLast(100)),
+    (snapshot) => onChange(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as WorkshopMessage))),
+    onError,
+  );
+}
+
+export async function sendWorkshopMessage(principal: TenantPrincipal, senderName: string, rawText: string): Promise<void> {
+  const text = rawText.trim();
+  if (!text || text.length > 4000) throw new Error("Tin nhắn phải có từ 1 đến 4000 ký tự.");
+  await addDoc(collection(db(), "tenants", principal.tenantId, "rooms", "main", "messages"), {
+    tenantId: principal.tenantId,
+    senderId: principal.uid,
+    senderName: senderName.trim().slice(0, 120),
+    text,
+    createdAt: serverTimestamp(),
   });
 }
