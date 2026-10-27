@@ -709,7 +709,7 @@ export function QDcomApp() {
       </aside>
       <section className="main-panel"><header className="topbar glass"><div className="mobile-wordmark">Q-<b>Dcom</b></div><div className="breadcrumb">Không gian kho <ChevronRight size={13} /><strong>{pageNames[page]}</strong></div><div className="topbar-actions"><span className={`connection-pill drive-connection ${driveSyncStatus}`} title={driveSyncMessage || undefined}><i />{driveSyncStatus === "syncing" ? "Đang đồng bộ Drive" : driveSyncStatus === "synced" ? "Đã lưu trên Drive" : driveSyncStatus === "error" ? "Lỗi đồng bộ Drive" : driveConnected ? "Drive đã kết nối" : "Drive chưa kết nối"}</span><span className="topbar-divider" /><ProfileAvatar profile={userProfile} /></div></header>
         <div className="main-content">
-          {page === "workshop" && <WorkshopDashboard initialUid={userProfile.firebaseUid} displayName={userProfile.displayName} />}
+          {page === "workshop" && <WorkshopDashboard initialUid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} />}
 
           {page === "inventory" && <>
             <div className="page-heading"><div><div className="eyebrow"><Activity /> Trung tâm vận hành · Hôm nay</div><h1>Mẫu hàng & kho</h1><p>Theo dõi số lượng, tình trạng và vị trí lưu trữ.</p></div><button className="primary-btn" onClick={() => openEditor()}><Plus /> Thêm mẫu hàng</button></div>
