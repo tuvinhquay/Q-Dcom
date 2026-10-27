@@ -47,6 +47,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(Date.now());
+  const [mountedAt] = useState(() => Date.now());
   const [poCode, setPoCode] = useState("");
   const [productName, setProductName] = useState("");
   const [color, setColor] = useState("");
@@ -89,7 +90,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
       getWorkshopSettings(active),
       active.role === "admin" ? listWorkshopMembers(active) : Promise.resolve([] as TenantMembership[]),
       active.role === "worker" ? getMyEarnings(active) : Promise.resolve(null),
-    ]);
+    ] as const);
     setOrders(results[0]);
     setEntries(results[1]);
     setExtras(results[2]);
@@ -232,7 +233,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
   }, [entries]);
   const lastSubmit = entries.reduce((latest, entry) => Math.max(latest, dateTime(entry.submittedAt)), 0);
   const intervalMs = Number(settings?.submissionIntervalHours ?? intervalHours) * 3600000;
-  const nextSubmit = (lastSubmit || tick) + intervalMs;
+  const nextSubmit = (lastSubmit || mountedAt) + intervalMs;
   const remaining = Math.max(0, nextSubmit - tick);
   const countdown = `${String(Math.floor(remaining / 3600000)).padStart(2,"0")}:${String(Math.floor(remaining / 60000) % 60).padStart(2,"0")}:${String(Math.floor(remaining / 1000) % 60).padStart(2,"0")}`;
 
