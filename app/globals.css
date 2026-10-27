@@ -705,3 +705,7 @@ button:disabled { cursor:not-allowed; opacity:.5; }
 .workshop-chat-message small { color:#a7bad3; font-size:8px; }
 .workshop-chat-compose { display:flex; gap:7px; }
 .workshop-chat-compose input { flex:1; min-width:0; }
+
+.workshop-chat-bot-answer { display:grid; gap:5px; margin-top:5px; padding:8px; border:1px solid #93c5fd55; border-radius:6px; background:#1d4ed835; }
+.workshop-chat-bot-answer>strong { color:#bfdbfe; font-size:8px; }
+.workshop-chat-bot-answer>p { color:#f0f7ff; font-size:9px; line-height:1.5; }
