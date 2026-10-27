@@ -30,7 +30,11 @@ export async function listWorkshopPurchaseOrders(principal: TenantPrincipal): Pr
     list.push({ operationId: String(rate.operationId), operationName: String(rate.operationName), unitRate: Number(rate.unitRate) });
     ratesByOrder.set(orderId, list);
   }
-  return orders.map((order) => ({ ...order, operationRates: ratesByOrder.get(order.id) ?? [] }));
+  return orders.map((order) => ({
+    ...order,
+    operationRates: ratesByOrder.get(order.id) ?? [],
+    operations: ratesByOrder.get(order.id) ?? order.operations ?? [],
+  }));
 }
 
 export async function saveWorkshopPurchaseOrder(principal: TenantPrincipal, order: PurchaseOrder): Promise<void> {
@@ -50,7 +54,10 @@ export async function saveWorkshopPurchaseOrder(principal: TenantPrincipal, orde
   const oldRates = await getDocs(query(ratesCollection, where("tenantId", "==", principal.tenantId), where("purchaseOrderId", "==", order.id)));
   const batch = writeBatch(db());
   batch.set(doc(tenantCollection(principal.tenantId, "purchaseOrders"), order.id), {
-    ...orderData, tenantId: principal.tenantId, updatedAt: new Date().toISOString(),
+    ...orderData,
+    operations: operationRates.map(({ operationId, operationName }) => ({ operationId, operationName })),
+    tenantId: principal.tenantId,
+    updatedAt: new Date().toISOString(),
   });
   oldRates.docs.forEach((entry) => batch.delete(entry.ref));
   for (const rate of operationRates) {
@@ -151,4 +158,17 @@ export async function getMyEarnings(principal: TenantPrincipal): Promise<{ appro
     approvedEarnings: Number(data?.approvedEarnings ?? 0),
     periods: periodSnapshot.docs.map((entry) => entry.data()),
   };
+}
+
+export async function addWorkshopWorker(principal: TenantPrincipal, input: { uid: string; displayName: string; employeeCode: string }): Promise<void> {
+  requireAdmin(principal);
+  const uid = input.uid.trim();
+  const displayName = input.displayName.trim();
+  const employeeCode = input.employeeCode.trim();
+  if (!uid || !displayName || !employeeCode) throw new Error("Cần nhập UID Google, tên công nhân và mã thẻ.");
+  const memberRef = doc(tenantCollection(principal.tenantId, "members"), uid);
+  await setDoc(memberRef, {
+    id: uid, tenantId: principal.tenantId, uid, role: "worker", displayName, employeeCode,
+    active: true, createdAt: serverTimestamp(),
+  });
 }
