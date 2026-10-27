@@ -153,7 +153,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
     try {
       const active = await getTenantPrincipal(uid, tenantIdInput.trim(), employeeCode.trim());
       setChatMessages([]);
-      setChatMessages([]);
+      setBotAnswers({});
       setPrincipal(active);
       setActiveTenantId(active.tenantId);
       setTenantIdInput(active.tenantId);
@@ -173,6 +173,8 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       const id = await createTenant({ name: tenantName, uid, displayName: signedInName || workerName || "Quản lý xưởng", employeeCode });
       setTenantIdInput(id);
       const active = await getTenantPrincipal(uid, id);
+      setChatMessages([]);
+      setBotAnswers({});
       setPrincipal(active);
       setActiveTenantId(active.tenantId);
       await loadData(active);
@@ -324,7 +326,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       <form className="workshop-card glass" onSubmit={(event) => { event.preventDefault(); void connectTenant(); }}><h2>Tham gia xưởng</h2><p>Nhập mã xưởng và mã thẻ nhân viên đã được quản lý đăng ký. Thẻ được đối chiếu với UID Google để không thể dùng mã thẻ đơn lẻ giả mạo tài khoản.</p><label>Mã xưởng<input value={tenantIdInput} onChange={(event) => setTenantIdInput(event.target.value)} required /></label><label>Mã thẻ nhân viên<input value={employeeCode} onChange={(event) => setEmployeeCode(event.target.value)} required /></label><button className="primary-btn" disabled={busy || !tenantIdInput.trim()}>Kết nối xưởng</button></form>
       <form className="workshop-card glass" onSubmit={(event) => void makeTenant(event)}><h2>Tạo xưởng mới</h2><p>Người tạo được gán vai trò Admin đầu tiên.</p><label>Tên xưởng<input value={tenantName} onChange={(event) => setTenantName(event.target.value)} required maxLength={120} /></label><label>Mã thẻ quản lý<input value={employeeCode} onChange={(event) => setEmployeeCode(event.target.value)} required maxLength={64} /></label><button className="primary-btn" disabled={busy || !tenantName.trim()}>Tạo xưởng</button></form>
     </div> : <>
-      <div className="workshop-tenant-strip glass"><span><strong>{principal.role === "admin" ? "QUẢN LÝ / ADMIN" : "CÔNG NHÂN / WORKER"}</strong><small>Mã xưởng: {principal.tenantId}</small></span><button className="quiet-btn" type="button" onClick={() => { setPrincipal(null); setChatMessages([]); setActiveTenantId("local-default"); setOrders([]); setEntries([]); setExtras([]); setMembers([]); setEarnings(null); }}>Đổi xưởng</button><button className="quiet-btn" type="button" onClick={() => { void signOutFirebaseUser().then(() => { setPrincipal(null); setChatMessages([]); setUid(""); setActiveTenantId("local-default"); }); }}>Đăng xuất Google</button></div>
+      <div className="workshop-tenant-strip glass"><span><strong>{principal.role === "admin" ? "QUẢN LÝ / ADMIN" : "CÔNG NHÂN / WORKER"}</strong><small>Mã xưởng: {principal.tenantId}</small></span><button className="quiet-btn" type="button" onClick={() => { setPrincipal(null); setChatMessages([]); setBotAnswers({}); setActiveTenantId("local-default"); setOrders([]); setEntries([]); setExtras([]); setMembers([]); setEarnings(null); }}>Đổi xưởng</button><button className="quiet-btn" type="button" onClick={() => { void signOutFirebaseUser().then(() => { setPrincipal(null); setChatMessages([]); setBotAnswers({}); setUid(""); setActiveTenantId("local-default"); }); }}>Đăng xuất Google</button></div>
       {principal.role === "admin" ? <>
         <div className="workshop-stat-grid"><div className="workshop-stat glass"><span>Đơn hàng PO</span><strong>{orders.length}</strong></div><div className="workshop-stat glass"><span>Chờ duyệt sản lượng</span><strong>{entries.filter((item) => item.status === "pending").length}</strong></div><div className="workshop-stat glass"><span>Chờ duyệt phụ phí</span><strong>{extras.length}</strong></div><div className="workshop-stat glass"><span>Thành viên xưởng</span><strong>{members.length}</strong></div></div>
         <div className="workshop-grid">
