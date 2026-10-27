@@ -6,7 +6,7 @@ export interface TenantPrincipal {
   role: TenantRole;
 }
 
-export type QBotPermission = "inventory_lookup" | "operation_procedure" | "tenant_overview" | "purchase_orders" | "productivity_report" | "personal_wallet" | "financial_detail" | "other_worker_earnings" | "confidential_document";
+export type QBotPermission = "inventory_lookup" | "operation_procedure" | "tenant_overview" | "purchase_orders" | "productivity_report" | "personal_wallet" | "financial_detail" | "other_worker_earnings" | "confidential_document" | "other";
 
 const sensitiveTerms = [
   "thu nhap tho khac", "luong tho khac", "tien cua tho", "don gia tong", "tong tien",
