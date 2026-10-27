@@ -170,6 +170,170 @@ service cloud.firestore {
       }
     }
 
+    function isTenantMember(tenantId) {
+      return isRealUser()
+        && exists(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/tenants/$(tenantId)).data.active == true;
+    }
+
+    function isTenantAdmin(tenantId) {
+      return isTenantMember(tenantId)
+        && get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function validTenantMember(tenantId, memberUid) {
+      return request.resource.data.keys().hasAll(['tenantId', 'uid', 'role', 'displayName', 'employeeCode', 'active', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['tenantId', 'uid', 'role', 'displayName', 'employeeCode', 'active', 'createdAt'])
+        && request.resource.data.tenantId == tenantId
+        && request.resource.data.uid == memberUid
+        && request.resource.data.role in ['admin', 'worker']
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 120
+        && request.resource.data.employeeCode is string
+        && request.resource.data.employeeCode.size() > 0
+        && request.resource.data.employeeCode.size() <= 64
+        && request.resource.data.active is bool;
+    }
+
+    match /tenants/{tenantId} {
+      allow create: if isRealUser()
+        && request.resource.data.keys().hasAll(['name', 'ownerUid', 'active', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'ownerUid', 'active', 'createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.active == true
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.createdAt == request.time;
+      allow read: if isTenantMember(tenantId);
+      allow update: if isTenantAdmin(tenantId)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'active'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120;
+      allow delete: if false;
+
+      match /members/{memberUid} {
+        allow read: if isTenantMember(tenantId)
+          && (request.auth.uid == memberUid || isTenantAdmin(tenantId));
+        allow create: if validTenantMember(tenantId, memberUid)
+          && request.resource.data.active == true
+          && request.resource.data.createdAt == request.time
+          && (
+            isTenantAdmin(tenantId)
+            || (
+              isRealUser()
+              && request.auth.uid == memberUid
+              && request.resource.data.role == 'admin'
+              && existsAfter(/databases/$(database)/documents/tenants/$(tenantId))
+              && getAfter(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerUid == request.auth.uid
+            )
+          );
+        allow update: if isTenantAdmin(tenantId)
+          && validTenantMember(tenantId, memberUid)
+          && request.resource.data.tenantId == resource.data.tenantId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantAdmin(tenantId) && memberUid != request.auth.uid;
+      }
+
+      match /purchaseOrders/{poId} {
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantAdmin(tenantId)
+          && request.resource.data.tenantId == tenantId
+          && request.resource.data.poCode is string
+          && request.resource.data.totalQuantity is int
+          && request.resource.data.totalQuantity > 0;
+        allow update: if isTenantAdmin(tenantId)
+          && resource.data.tenantId == tenantId
+          && request.resource.data.tenantId == tenantId;
+        allow delete: if isTenantAdmin(tenantId) && resource.data.tenantId == tenantId;
+      }
+
+      match /operationRates/{rateId} {
+        allow read, write: if isTenantAdmin(tenantId)
+          && (!('tenantId' in request.resource.data) || request.resource.data.tenantId == tenantId);
+      }
+
+      match /productionEntries/{entryId} {
+        allow read: if isTenantMember(tenantId)
+          && resource.data.tenantId == tenantId
+          && (isTenantAdmin(tenantId) || resource.data.workerUid == request.auth.uid);
+        allow create: if isTenantMember(tenantId)
+          && get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid)).data.role == 'worker'
+          && request.resource.data.tenantId == tenantId
+          && request.resource.data.workerUid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.quantity is int
+          && request.resource.data.quantity > 0;
+        allow update: if isTenantAdmin(tenantId)
+          && resource.data.tenantId == tenantId
+          && request.resource.data.tenantId == resource.data.tenantId
+          && request.resource.data.workerUid == resource.data.workerUid
+          && request.resource.data.quantity == resource.data.quantity
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy'])
+          && request.resource.data.status in ['approved', 'rejected']
+          && request.resource.data.reviewedBy == request.auth.uid;
+        allow delete: if false;
+      }
+
+      match /workerExtras/{extraId} {
+        allow read: if isTenantMember(tenantId)
+          && resource.data.tenantId == tenantId
+          && (
+            resource.data.workerUid == request.auth.uid
+            || (isTenantAdmin(tenantId) && resource.data.status == 'pending')
+          );
+        allow create: if isTenantMember(tenantId)
+          && get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid)).data.role == 'worker'
+          && request.resource.data.tenantId == tenantId
+          && request.resource.data.workerUid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.amount is number
+          && request.resource.data.amount >= 0;
+        allow update: if isTenantAdmin(tenantId)
+          && resource.data.tenantId == tenantId
+          && resource.data.status == 'pending'
+          && request.resource.data.tenantId == resource.data.tenantId
+          && request.resource.data.workerUid == resource.data.workerUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy'])
+          && request.resource.data.status in ['approved', 'rejected']
+          && request.resource.data.reviewedBy == request.auth.uid;
+        allow delete: if false;
+      }
+
+      match /earnings/{workerUid} {
+        // Individual earnings are private to the worker; client-side Admin access is denied.
+        allow read: if isTenantMember(tenantId) && request.auth.uid == workerUid;
+        allow create, update, delete: if false;
+      }
+
+      match /settings/{settingId} {
+        allow read: if isTenantMember(tenantId);
+        allow create, update: if isTenantAdmin(tenantId)
+          && request.resource.data.tenantId == tenantId
+          && request.resource.data.submissionIntervalHours is number
+          && request.resource.data.submissionIntervalHours >= 1
+          && request.resource.data.submissionIntervalHours <= 3;
+        allow delete: if false;
+      }
+
+      match /rooms/{roomId}/messages/{messageId} {
+        allow read: if isTenantMember(tenantId) && resource.data.tenantId == tenantId;
+        allow create: if isTenantMember(tenantId)
+          && request.resource.data.tenantId == tenantId
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 4000
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
