@@ -28,7 +28,7 @@ export async function createTenant(input: { name: string; uid: string; displayNa
 }
 
 /** Role is loaded from the tenant membership document, not accepted from UI/chat text. */
-export async function getTenantPrincipal(uid: string, tenantId: string): Promise<TenantPrincipal> {
+export async function getTenantPrincipal(uid: string, tenantId: string, employeeCode?: string): Promise<TenantPrincipal> {
   if (!uid || !tenantId) throw new Error("Thiếu tài khoản hoặc mã xưởng.");
   const [tenantSnapshot, memberSnapshot] = await Promise.all([
     getDoc(doc(db(), "tenants", tenantId)),
@@ -38,7 +38,8 @@ export async function getTenantPrincipal(uid: string, tenantId: string): Promise
   if (!memberSnapshot.exists()) throw new Error("Tài khoản chưa được thêm vào xưởng này.");
   const membership = memberSnapshot.data() as TenantMembership;
   if (membership.tenantId !== tenantId || membership.uid !== uid || membership.active !== true ||
-      (membership.role !== "admin" && membership.role !== "worker")) {
+      (membership.role !== "admin" && membership.role !== "worker") ||
+      (employeeCode !== undefined && membership.employeeCode !== employeeCode.trim())) {
     throw new Error("Thông tin thành viên xưởng không hợp lệ.");
   }
   return { uid, tenantId, role: membership.role as TenantRole };
