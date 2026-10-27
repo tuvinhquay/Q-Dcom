@@ -41,6 +41,8 @@ export interface PurchaseOrder {
   receivedAt: string;
   dueAt: string;
   operationRates: OperationRate[];
+  /** Operation names visible to tenant workers; rates remain admin-only. */
+  operations?: Array<Pick<OperationRate, "operationId" | "operationName">>;
   createdAt: string;
   updatedAt: string;
 }
