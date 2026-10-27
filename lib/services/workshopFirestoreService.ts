@@ -1,5 +1,5 @@
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp,
+  collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp,
   setDoc, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
