@@ -43,4 +43,4 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Validate Firestore rules with emulator
-        run: npx --yes firebase-tools emulators:exec --only firestore --project demo-qdcom "echo Firestore rules loaded"
+        run: npx --yes firebase-tools emulators:exec --only firestore --project demo-qdcom "npm --prefix tests/security install && npm --prefix tests/security test"
