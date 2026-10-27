@@ -3,6 +3,7 @@ import {
   setDoc, updateDoc, where, writeBatch, type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
+import { qdcomDB } from "@/lib/db/qdcomDB";
 import { parseQBotQuery } from "@/lib/bot/qBotParser";
 import { canAskQBot, classifyQBotPermission } from "@/lib/tenancy/authorization";
 import type { Product } from "@/types/product";
@@ -23,7 +24,10 @@ function requireTenant(principal: TenantPrincipal, tenantId: string): void {
 export async function listWorkshopPurchaseOrders(principal: TenantPrincipal): Promise<PurchaseOrder[]> {
   const snapshot = await getDocs(query(tenantCollection(principal.tenantId, "purchaseOrders"), where("tenantId", "==", principal.tenantId), orderBy("dueAt", "asc")));
   const orders = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data(), operationRates: [] } as unknown as PurchaseOrder));
-  if (principal.role !== "admin") return orders;
+  if (principal.role !== "admin") {
+    void qdcomDB.purchaseOrders.bulkPut(orders.map((order) => ({ ...order, operationRates: [] }))).catch(() => undefined);
+    return orders;
+  }
   const ratesSnapshot = await getDocs(query(tenantCollection(principal.tenantId, "operationRates"), where("tenantId", "==", principal.tenantId)));
   const ratesByOrder = new Map<string, PurchaseOrder["operationRates"]>();
   for (const entry of ratesSnapshot.docs) {
@@ -33,11 +37,14 @@ export async function listWorkshopPurchaseOrders(principal: TenantPrincipal): Pr
     list.push({ operationId: String(rate.operationId), operationName: String(rate.operationName), unitRate: Number(rate.unitRate) });
     ratesByOrder.set(orderId, list);
   }
-  return orders.map((order) => ({
+  const adminOrders = orders.map((order) => ({
     ...order,
     operationRates: ratesByOrder.get(order.id) ?? [],
     operations: ratesByOrder.get(order.id) ?? order.operations ?? [],
   }));
+  // Do not cache confidential per-operation rates locally; the IndexedDB cache contains only worker-visible PO fields.
+  void qdcomDB.purchaseOrders.bulkPut(adminOrders.map((order) => ({ ...order, operationRates: [] }))).catch(() => undefined);
+  return adminOrders;
 }
 
 export async function saveWorkshopPurchaseOrder(principal: TenantPrincipal, order: PurchaseOrder): Promise<void> {
@@ -69,6 +76,7 @@ export async function saveWorkshopPurchaseOrder(principal: TenantPrincipal, orde
     });
   }
   await batch.commit();
+  void qdcomDB.purchaseOrders.put({ ...order, operationRates: [] }).catch(() => undefined);
 }
 
 export async function deleteWorkshopPurchaseOrder(principal: TenantPrincipal, orderId: string): Promise<void> {
@@ -86,13 +94,16 @@ export async function deleteWorkshopPurchaseOrder(principal: TenantPrincipal, or
   batch.delete(orderRef);
   rates.docs.forEach((entry) => batch.delete(entry.ref));
   await batch.commit();
+  void qdcomDB.purchaseOrders.delete(orderId).catch(() => undefined);
 }
 
 export async function listWorkshopProductionEntries(principal: TenantPrincipal): Promise<ProductionEntry[]> {
   const constraints = [where("tenantId", "==", principal.tenantId)];
   if (principal.role === "worker") constraints.push(where("workerUid", "==", principal.uid));
   const snapshot = await getDocs(query(tenantCollection(principal.tenantId, "productionEntries"), ...constraints, orderBy("submittedAt", "desc")));
-  return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ProductionEntry));
+  const entries = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ProductionEntry));
+  void qdcomDB.productionEntries.bulkPut(entries).catch(() => undefined);
+  return entries;
 }
 
 export async function submitWorkshopProduction(principal: TenantPrincipal, entry: Omit<ProductionEntry, "id" | "status" | "submittedAt" | "reviewedAt" | "reviewedBy">): Promise<void> {
@@ -100,7 +111,9 @@ export async function submitWorkshopProduction(principal: TenantPrincipal, entry
   requireTenant(principal, entry.tenantId);
   if (!Number.isSafeInteger(entry.quantity) || entry.quantity <= 0) throw new Error("Sản lượng phải là số nguyên lớn hơn 0.");
   const entryRef = doc(tenantCollection(principal.tenantId, "productionEntries"));
-  await setDoc(entryRef, { ...entry, id: entryRef.id, tenantId: principal.tenantId, status: "pending", submittedAt: serverTimestamp() });
+  const localEntry: ProductionEntry = { ...entry, id: entryRef.id, tenantId: principal.tenantId, status: "pending", submittedAt: new Date().toISOString() };
+  await setDoc(entryRef, { ...localEntry, submittedAt: serverTimestamp() });
+  void qdcomDB.productionEntries.put(localEntry).catch(() => undefined);
 }
 
 export async function reviewWorkshopProduction(principal: TenantPrincipal, entryId: string, approve: boolean): Promise<void> {
@@ -108,6 +121,10 @@ export async function reviewWorkshopProduction(principal: TenantPrincipal, entry
   await updateDoc(doc(tenantCollection(principal.tenantId, "productionEntries"), entryId), {
     status: approve ? "approved" : "rejected", reviewedAt: serverTimestamp(), reviewedBy: principal.uid,
   });
+  const cachedEntry = await qdcomDB.productionEntries.get(entryId);
+  if (cachedEntry?.tenantId === principal.tenantId) {
+    void qdcomDB.productionEntries.put({ ...cachedEntry, status: approve ? "approved" : "rejected", reviewedAt: new Date().toISOString(), reviewedBy: principal.uid }).catch(() => undefined);
+  }
 }
 
 export async function listWorkshopExtras(principal: TenantPrincipal): Promise<WorkerExtra[]> {
@@ -136,20 +153,27 @@ export async function reviewWorkshopExtra(principal: TenantPrincipal, extraId: s
 export async function listWorkshopMembers(principal: TenantPrincipal): Promise<TenantMembership[]> {
   requireAdmin(principal);
   const snapshot = await getDocs(query(tenantCollection(principal.tenantId, "members"), where("tenantId", "==", principal.tenantId)));
-  return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as TenantMembership));
+  const members = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as TenantMembership));
+  void qdcomDB.tenantMemberships.bulkPut(members).catch(() => undefined);
+  return members;
 }
 
 export async function getWorkshopSettings(principal: TenantPrincipal): Promise<TenantOperationsSettings | null> {
   const snapshot = await getDoc(doc(tenantCollection(principal.tenantId, "settings"), "operations"));
-  return snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as TenantOperationsSettings) : null;
+  if (!snapshot.exists()) return null;
+  const settings = { id: snapshot.id, ...snapshot.data() } as TenantOperationsSettings;
+  void qdcomDB.tenantSettings.put(settings).catch(() => undefined);
+  return settings;
 }
 
 export async function saveWorkshopSettings(principal: TenantPrincipal, hours: number): Promise<void> {
   requireAdmin(principal);
   if (!Number.isFinite(hours) || hours < 1 || hours > 3) throw new Error("Khoảng nhắc nộp sản lượng phải từ 1 đến 3 giờ.");
+  const settings: TenantOperationsSettings = { id: "operations", tenantId: principal.tenantId, submissionIntervalHours: hours, updatedAt: new Date().toISOString() };
   await setDoc(doc(tenantCollection(principal.tenantId, "settings"), "operations"), {
-    id: "operations", tenantId: principal.tenantId, submissionIntervalHours: hours, updatedAt: serverTimestamp(),
+    ...settings, updatedAt: serverTimestamp(),
   });
+  void qdcomDB.tenantSettings.put(settings).catch(() => undefined);
 }
 
 export async function getMyEarnings(principal: TenantPrincipal): Promise<{ approvedQuantity: number; approvedEarnings: number; periods: Array<Record<string, unknown>> }> {
@@ -174,10 +198,9 @@ export async function addWorkshopWorker(principal: TenantPrincipal, input: { uid
   const employeeCode = input.employeeCode.trim();
   if (!uid || !displayName || !employeeCode) throw new Error("Cần nhập UID Google, tên công nhân và mã thẻ.");
   const memberRef = doc(tenantCollection(principal.tenantId, "members"), uid);
-  await setDoc(memberRef, {
-    tenantId: principal.tenantId, uid, role: "worker", displayName, employeeCode,
-    active: true, createdAt: serverTimestamp(),
-  });
+  const member: TenantMembership = { id: uid, tenantId: principal.tenantId, uid, role: "worker", displayName, employeeCode, active: true, createdAt: new Date().toISOString() };
+  await setDoc(memberRef, { ...member, createdAt: serverTimestamp() });
+  void qdcomDB.tenantMemberships.put(member).catch(() => undefined);
 }
 
 export interface WorkshopMessage {
