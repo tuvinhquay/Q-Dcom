@@ -107,7 +107,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
 
   useEffect(() => {
     if (!principal) return;
-    const pending = chatMessages.filter((message) => /^@q\\b/i.test(message.text) && botAnswers[message.id] === undefined);
+    const pending = chatMessages.filter((message) => /^@q\b/i.test(message.text) && botAnswers[message.id] === undefined);
     if (!pending.length) return;
     let cancelled = false;
     void Promise.all(pending.map(async (message) => [message.id, await answerWorkshopQBot(principal, message.text, products)] as const))
