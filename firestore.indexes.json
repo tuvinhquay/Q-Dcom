@@ -137,6 +137,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "productionEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "purchaseOrderId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "operationId",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
