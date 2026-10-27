@@ -736,7 +736,9 @@ export function QDcomApp() {
 
           {page === "community" && <>
             <div className="page-heading"><div><div className="eyebrow"><Users /> Kết nối thành viên</div><h1>Cộng đồng chat</h1><p>Tìm kiếm ID/QR, tạo nhóm và trao đổi tin nhắn. @q chỉ tra cứu dữ liệu IndexedDB cục bộ.</p></div></div>
-            {userProfile.firebaseUid
+            {activeTenantId !== "local-default"
+              ? <section className="community-login-required glass"><ShieldCheck /><div><strong>Cộng đồng đã được cô lập theo mã xưởng</strong><p>Để tránh gửi nhầm tin nhắn sang cộng đồng dùng chung cũ, hãy sử dụng phòng chat tenant bên trong mục Sản lượng xưởng.</p><button className="primary-btn" onClick={() => setPage("workshop")}>Mở cộng đồng xưởng <ArrowRight /></button></div></section>
+              : userProfile.firebaseUid
               ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} tenantId={activeTenantId} role={currentTenantRole} />
               : <section className="community-login-required glass"><LockKeyhole /><div><strong>Cần đăng nhập bằng Google</strong><p>Tài khoản ID cá nhân chỉ hoạt động trên thiết bị này. Đăng nhập Google để sử dụng danh bạ, nhóm và chat Firebase.</p>{isFirebaseConfigured && <GoogleDriveLoginButton label="Đăng nhập Google để kết nối" onAuthorized={handleGoogleAuthorization} onError={notify} />}</div></section>}
           </>}
