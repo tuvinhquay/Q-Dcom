@@ -278,7 +278,10 @@ service cloud.firestore {
           && request.resource.data.workerUid == request.auth.uid
           && request.resource.data.status == 'pending'
           && request.resource.data.quantity is int
-          && request.resource.data.quantity > 0;
+          && request.resource.data.quantity > 0
+          && request.resource.data.purchaseOrderId is string
+          && exists(/databases/$(database)/documents/tenants/$(tenantId)/purchaseOrders/$(request.resource.data.purchaseOrderId))
+          && get(/databases/$(database)/documents/tenants/$(tenantId)/purchaseOrders/$(request.resource.data.purchaseOrderId)).data.tenantId == tenantId;
         allow update: if isTenantAdmin(tenantId)
           && resource.data.tenantId == tenantId
           && request.resource.data.tenantId == resource.data.tenantId
