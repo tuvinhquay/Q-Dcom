@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { AlertTriangle, BadgeCheck, Clock3, Factory, Plus, RefreshCw, ShieldCheck, UserPlus, Wallet } from "lucide-react";
+import { AlertTriangle, Clock3, Factory, Plus, RefreshCw, ShieldCheck, UserPlus, Wallet } from "lucide-react";
 import { getFirebaseAuth, isFirebaseConfigured, signInWithGooglePopup, signOutFirebaseUser } from "@/lib/firebase";
 import { createTenant, getTenantPrincipal } from "@/lib/services/tenantService";
 import {
@@ -46,8 +46,8 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [tick, setTick] = useState(Date.now());
-  const [mountedAt] = useState(() => Date.now());
+  const [tick, setTick] = useState(0);
+  const [mountedAt, setMountedAt] = useState(0);
   const [poCode, setPoCode] = useState("");
   const [productName, setProductName] = useState("");
   const [color, setColor] = useState("");
@@ -78,7 +78,11 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
   }, [initialUid, displayName]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setTick(Date.now()), 1000);
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setTick(now);
+      setMountedAt((current) => current || now);
+    }, 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -233,7 +237,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
   }, [entries]);
   const lastSubmit = entries.reduce((latest, entry) => Math.max(latest, dateTime(entry.submittedAt)), 0);
   const intervalMs = Number(settings?.submissionIntervalHours ?? intervalHours) * 3600000;
-  const nextSubmit = (lastSubmit || mountedAt) + intervalMs;
+  const nextSubmit = (lastSubmit || mountedAt || tick) + intervalMs;
   const remaining = Math.max(0, nextSubmit - tick);
   const countdown = `${String(Math.floor(remaining / 3600000)).padStart(2,"0")}:${String(Math.floor(remaining / 60000) % 60).padStart(2,"0")}:${String(Math.floor(remaining / 1000) % 60).padStart(2,"0")}`;
 
