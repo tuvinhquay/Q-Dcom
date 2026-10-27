@@ -133,6 +133,7 @@ export function QDcomApp() {
   const [products, setProducts] = useState<Product[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("local-default");
   const [activeTenantRole, setActiveTenantRole] = useState<TenantRole>("worker");
+  const [activeTenantRoleTenantId, setActiveTenantRoleTenantId] = useState("local-default");
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
@@ -202,15 +203,18 @@ export function QDcomApp() {
   }, []);
   useEffect(() => {
     const uid = userProfile?.firebaseUid;
-    if (!uid || activeTenantId === "local-default") {
-      setActiveTenantRole("worker");
-      return;
-    }
+    if (!uid || activeTenantId === "local-default") return;
     let cancelled = false;
     void getTenantPrincipal(uid, activeTenantId).then((principal) => {
-      if (!cancelled) setActiveTenantRole(principal.role);
+      if (!cancelled) {
+        setActiveTenantRole(principal.role);
+        setActiveTenantRoleTenantId(activeTenantId);
+      }
     }).catch(() => {
-      if (!cancelled) setActiveTenantRole("worker");
+      if (!cancelled) {
+        setActiveTenantRole("worker");
+        setActiveTenantRoleTenantId(activeTenantId);
+      }
     });
     return () => { cancelled = true; };
   }, [activeTenantId, userProfile?.firebaseUid]);
@@ -242,7 +246,7 @@ export function QDcomApp() {
       });
     }, 500);
     return () => window.clearTimeout(timeout);
-  }, [members, products, ready, userProfile, vocabulary]);
+  }, [activeTenantId, members, products, ready, userProfile, vocabulary]);
   useEffect(() => {
     if (!userProfile || userProfile.firebaseUid || userProfile.googleSub) return;
     const warnBeforeExit = (event: BeforeUnloadEvent) => {
@@ -256,6 +260,7 @@ export function QDcomApp() {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
   }, []);
 
+  const currentTenantRole = activeTenantId === "local-default" || activeTenantRoleTenantId !== activeTenantId ? "worker" : activeTenantRole;
   const activeProducts = products.filter((product) => product.status !== "hidden");
   const shownProducts = activeProducts.filter((product) => {
     const text = query.trim().toLocaleLowerCase("vi");
@@ -309,7 +314,7 @@ export function QDcomApp() {
   function askBot(text: string) {
     const clean = text.trim(); if (!clean) return;
     appendMessage("user", clean);
-    const answer = parseQBotQuery(clean, products, vocabulary, { tenantId: activeTenantId, role: activeTenantRole, uid: userProfile?.firebaseUid ?? userProfile?.peerId });
+    const answer = parseQBotQuery(clean, products, vocabulary, { tenantId: activeTenantId, role: currentTenantRole, uid: userProfile?.firebaseUid ?? userProfile?.peerId });
     appendMessage("assistant", answer.message, answer.products.map((product) => product.id));
     setBotInput(""); setPage("bot");
   }
@@ -732,7 +737,7 @@ export function QDcomApp() {
           {page === "community" && <>
             <div className="page-heading"><div><div className="eyebrow"><Users /> Kết nối thành viên</div><h1>Cộng đồng chat</h1><p>Tìm kiếm ID/QR, tạo nhóm và trao đổi tin nhắn. @q chỉ tra cứu dữ liệu IndexedDB cục bộ.</p></div></div>
             {userProfile.firebaseUid
-              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} tenantId={activeTenantId} role={activeTenantRole} />
+              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} tenantId={activeTenantId} role={currentTenantRole} />
               : <section className="community-login-required glass"><LockKeyhole /><div><strong>Cần đăng nhập bằng Google</strong><p>Tài khoản ID cá nhân chỉ hoạt động trên thiết bị này. Đăng nhập Google để sử dụng danh bạ, nhóm và chat Firebase.</p>{isFirebaseConfigured && <GoogleDriveLoginButton label="Đăng nhập Google để kết nối" onAuthorized={handleGoogleAuthorization} onError={notify} />}</div></section>}
           </>}
 
