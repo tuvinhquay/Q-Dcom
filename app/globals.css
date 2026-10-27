@@ -709,3 +709,14 @@ button:disabled { cursor:not-allowed; opacity:.5; }
 .workshop-chat-bot-answer { display:grid; gap:5px; margin-top:5px; padding:8px; border:1px solid #93c5fd55; border-radius:6px; background:#1d4ed835; }
 .workshop-chat-bot-answer>strong { color:#bfdbfe; font-size:8px; }
 .workshop-chat-bot-answer>p { color:#f0f7ff; font-size:9px; line-height:1.5; }
+
+.workshop-po-qr { display:grid; justify-items:start; gap:6px; margin-top:4px; }
+.workshop-po-qr summary { color:#bfdbfe; cursor:pointer; font-size:8px; font-weight:700; }
+.workshop-po-qr svg { padding:5px; border-radius:4px; background:#fff; }
+.workshop-scan-backdrop { position:fixed; z-index:80; inset:0; display:grid; place-items:center; padding:16px; background:#071326b8; backdrop-filter:blur(8px); }
+.workshop-scan-modal { width:min(460px,100%); max-height:90dvh; overflow:auto; padding:15px; border:1px solid #ffffff35; border-radius:12px; background:rgba(15,23,42,.9); box-shadow:0 20px 60px #0007; }
+.workshop-scan-modal>header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.workshop-scan-modal>header strong { color:#f4f8ff; font-size:13px; }
+.workshop-scan-modal>p { color:#bac9df; font-size:10px; line-height:1.5; }
+.workshop-scan-modal #qdcom-camera-reader { color:#dbeafe; }
+.workshop-scan-modal #qdcom-camera-reader button { color:#1e293b; }
