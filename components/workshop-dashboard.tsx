@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { AlertTriangle, Clock3, Factory, Plus, RefreshCw, ShieldCheck, UserPlus, Wallet } from "lucide-react";
+import { AlertTriangle, Clock3, Factory, MessageCircle, Plus, RefreshCw, ShieldCheck, UserPlus, Wallet } from "lucide-react";
 import { getFirebaseAuth, isFirebaseConfigured, signInWithGooglePopup, signOutFirebaseUser } from "@/lib/firebase";
 import { createTenant, getTenantPrincipal } from "@/lib/services/tenantService";
 import {
   addWorkshopWorker, deleteWorkshopPurchaseOrder, getMyEarnings, getWorkshopSettings,
   listWorkshopExtras, listWorkshopMembers, listWorkshopProductionEntries, listWorkshopPurchaseOrders,
   reviewWorkshopExtra, reviewWorkshopProduction, saveWorkshopPurchaseOrder, saveWorkshopSettings,
-  submitWorkshopExtra, submitWorkshopProduction,
+  sendWorkshopMessage, submitWorkshopExtra, submitWorkshopProduction, watchWorkshopMessages,
+  type WorkshopMessage,
 } from "@/lib/services/workshopFirestoreService";
 import type { TenantPrincipal } from "@/lib/tenancy/authorization";
 import type { PurchaseOrder, ProductionEntry, TenantMembership, TenantOperationsSettings, WorkerExtra } from "@/types/tenant";
@@ -86,6 +87,8 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
   const [workerName, setWorkerName] = useState("");
   const [workerCode, setWorkerCode] = useState("");
   const [intervalHours, setIntervalHours] = useState("2");
+  const [chatMessages, setChatMessages] = useState<WorkshopMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
 
   useEffect(() => {
     if (!isFirebaseConfigured) return;
@@ -94,6 +97,11 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
       setSignedInName(user?.displayName ?? displayName);
     });
   }, [initialUid, displayName]);
+
+  useEffect(() => {
+    if (!principal) { setChatMessages([]); return; }
+    return watchWorkshopMessages(principal, setChatMessages, (reason) => setError(reason.message));
+  }, [principal]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -245,6 +253,17 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
     finally { setBusy(false); }
   }
 
+  async function sendChat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!principal || !chatDraft.trim()) return;
+    setBusy(true); setError("");
+    try {
+      await sendWorkshopMessage(principal, signedInName || principal.uid, chatDraft);
+      setChatDraft("");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Không thể gửi tin nhắn xưởng."); }
+    finally { setBusy(false); }
+  }
+
   async function reviewEntry(id: string, approve: boolean) {
     if (!principal) return;
     setBusy(true); setError("");
@@ -304,6 +323,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
           <section className="workshop-card glass"><h2><Wallet size={17} /> Ví thu nhập riêng tư</h2><p>Chỉ tài khoản của bạn đọc được dữ liệu này. Admin không có quyền đọc tài liệu ví trên Firestore.</p><div className="workshop-wallet-total">{money(earnings?.approvedEarnings ?? 0)}</div><p>{(earnings?.approvedQuantity ?? 0).toLocaleString("vi-VN")} sản phẩm đã duyệt</p><div className="workshop-section-heading"><h3>Tổng hợp theo kỳ</h3><select value={walletPeriod} onChange={(event) => setWalletPeriod(event.target.value)} aria-label="Kỳ thu nhập"><option value="day">Ngày</option><option value="week">Tuần</option><option value="month">Tháng</option><option value="quarter">Quý</option><option value="year">Năm</option></select></div>{(earnings?.periods ?? []).filter((period) => String(period.period) === walletPeriod).slice(0,20).map((period,index) => <div className="workshop-history" key={String(period.period)+"-"+String(period.periodKey)+"-"+index}><span>{String(period.period)} · {String(period.periodKey)} · {Number(period.approvedQuantity ?? 0)} sản phẩm</span><b>{money(Number(period.approvedEarnings ?? 0))}</b></div>)}{!(earnings?.periods ?? []).some((period) => String(period.period) === walletPeriod) && <p className="workshop-muted">Chưa có dữ liệu thu nhập được duyệt cho kỳ này.</p>}</section>
         </div>
       </>}
+      <section className="workshop-card glass workshop-chat-card"><h2><MessageCircle size={17} /> Cộng đồng xưởng · chỉ thành viên cùng tenant</h2><p>Tin nhắn được lưu dưới mã xưởng hiện tại; tài khoản ngoài xưởng không đọc được.</p><div className="workshop-chat-messages">{chatMessages.map((message) => <article className={`workshop-chat-message ${message.senderId === principal.uid ? "mine" : ""}`} key={message.id}><strong>{message.senderName || message.senderId}</strong><p>{message.text}</p><small>{dateTime(message.createdAt) ? new Date(dateTime(message.createdAt)).toLocaleString("vi-VN") : "vừa gửi"}</small></article>)}{!chatMessages.length && <p className="workshop-muted">Chưa có tin nhắn trong phòng chat xưởng.</p>}</div><form className="workshop-chat-compose" onSubmit={(event) => void sendChat(event)}><input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} maxLength={4000} placeholder="Nhắn tin cho thành viên cùng xưởng…" aria-label="Tin nhắn xưởng" /><button className="primary-btn" disabled={busy || !chatDraft.trim()}>Gửi</button></form></section>
     </>}
     {notice && <p className="workshop-notice" role="status">{notice}</p>}{error && <p className="workshop-error" role="alert">{error}</p>}
   </section>;
