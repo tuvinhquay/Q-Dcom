@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { AlertTriangle, BadgeCheck, Clock3, Factory, Plus, RefreshCw, ShieldCheck, UserPlus, Wallet } from "lucide-react";
 import { getFirebaseAuth, isFirebaseConfigured, signInWithGooglePopup, signOutFirebaseUser } from "@/lib/firebase";
@@ -71,7 +71,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
   useEffect(() => {
     if (!isFirebaseConfigured) return;
     return onAuthStateChanged(getFirebaseAuth(), (user) => {
-      setUid(user?.uid ?? initialUid ?? "");
+      setUid(user?.uid ?? "");
       setSignedInName(user?.displayName ?? displayName);
     });
   }, [initialUid, displayName]);
@@ -114,7 +114,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
     } finally { setBusy(false); }
   }
 
-  async function makeTenant(event: React.FormEvent<HTMLFormElement>) {
+  async function makeTenant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!uid) return;
     setBusy(true); setError(""); setNotice("");
@@ -136,7 +136,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
     finally { setBusy(false); }
   }
 
-  async function saveOrder(event: React.FormEvent<HTMLFormElement>) {
+  async function saveOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!principal) return;
     setBusy(true); setError("");
@@ -164,7 +164,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
     setUnitRate(String(order.operationRates[0]?.unitRate ?? 0));
   }
 
-  async function submitProduction(event: React.FormEvent<HTMLFormElement>) {
+  async function submitProduction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!principal || principal.role !== "worker") return;
     const order = orders.find((item) => item.id === selectedOrderId);
@@ -182,7 +182,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
     finally { setBusy(false); }
   }
 
-  async function submitExtra(event: React.FormEvent<HTMLFormElement>) {
+  async function submitExtra(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!principal || principal.role !== "worker") return;
     setBusy(true); setError("");
@@ -196,7 +196,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
     finally { setBusy(false); }
   }
 
-  async function addWorker(event: React.FormEvent<HTMLFormElement>) {
+  async function addWorker(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!principal) return;
     setBusy(true); setError("");
@@ -245,7 +245,7 @@ export function WorkshopDashboard({ initialUid, displayName = "" }: Props) {
       <form className="workshop-card glass" onSubmit={(event) => { event.preventDefault(); void connectTenant(); }}><h2>Tham gia xưởng</h2><p>Nhập mã xưởng do quản lý cung cấp. Vai trò được đọc từ hồ sơ thành viên trên Firestore.</p><label>Mã xưởng<input value={tenantIdInput} onChange={(event) => setTenantIdInput(event.target.value)} required /></label><button className="primary-btn" disabled={busy || !tenantIdInput.trim()}>Kết nối xưởng</button></form>
       <form className="workshop-card glass" onSubmit={(event) => void makeTenant(event)}><h2>Tạo xưởng mới</h2><p>Người tạo được gán vai trò Admin đầu tiên.</p><label>Tên xưởng<input value={tenantName} onChange={(event) => setTenantName(event.target.value)} required maxLength={120} /></label><label>Mã thẻ quản lý<input value={employeeCode} onChange={(event) => setEmployeeCode(event.target.value)} required maxLength={64} /></label><button className="primary-btn" disabled={busy || !tenantName.trim()}>Tạo xưởng</button></form>
     </div> : <>
-      <div className="workshop-tenant-strip glass"><span><strong>{principal.role === "admin" ? "QUẢN LÝ / ADMIN" : "CÔNG NHÂN / WORKER"}</strong><small>Mã xưởng: {principal.tenantId}</small></span><button className="quiet-btn" type="button" onClick={() => { setPrincipal(null); setOrders([]); setEntries([]); setExtras([]); setMembers([]); setEarnings(null); }}>Đổi xưởng</button><button className="quiet-btn" type="button" onClick={() => void signOutFirebaseUser()}>Đăng xuất Google</button></div>
+      <div className="workshop-tenant-strip glass"><span><strong>{principal.role === "admin" ? "QUẢN LÝ / ADMIN" : "CÔNG NHÂN / WORKER"}</strong><small>Mã xưởng: {principal.tenantId}</small></span><button className="quiet-btn" type="button" onClick={() => { setPrincipal(null); setOrders([]); setEntries([]); setExtras([]); setMembers([]); setEarnings(null); }}>Đổi xưởng</button><button className="quiet-btn" type="button" onClick={() => { void signOutFirebaseUser().then(() => { setPrincipal(null); setUid(""); }); }}>Đăng xuất Google</button></div>
       {principal.role === "admin" ? <>
         <div className="workshop-stat-grid"><div className="workshop-stat glass"><span>Đơn hàng PO</span><strong>{orders.length}</strong></div><div className="workshop-stat glass"><span>Chờ duyệt sản lượng</span><strong>{entries.filter((item) => item.status === "pending").length}</strong></div><div className="workshop-stat glass"><span>Chờ duyệt phụ phí</span><strong>{extras.length}</strong></div><div className="workshop-stat glass"><span>Thành viên xưởng</span><strong>{members.length}</strong></div></div>
         <div className="workshop-grid">
