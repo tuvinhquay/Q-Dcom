@@ -132,8 +132,7 @@ export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("local-default");
-  const [activeTenantRole, setActiveTenantRole] = useState<TenantRole>("worker");
-  const [activeTenantRoleTenantId, setActiveTenantRoleTenantId] = useState("local-default");
+  const [activeTenantRoleContext, setActiveTenantRoleContext] = useState<{ tenantId: string; uid: string; role: TenantRole }>({ tenantId: "local-default", uid: "", role: "worker" });
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
@@ -207,13 +206,11 @@ export function QDcomApp() {
     let cancelled = false;
     void getTenantPrincipal(uid, activeTenantId).then((principal) => {
       if (!cancelled) {
-        setActiveTenantRole(principal.role);
-        setActiveTenantRoleTenantId(activeTenantId);
+        setActiveTenantRoleContext({ tenantId: activeTenantId, uid, role: principal.role });
       }
     }).catch(() => {
       if (!cancelled) {
-        setActiveTenantRole("worker");
-        setActiveTenantRoleTenantId(activeTenantId);
+        setActiveTenantRoleContext({ tenantId: activeTenantId, uid, role: "worker" });
       }
     });
     return () => { cancelled = true; };
@@ -260,7 +257,7 @@ export function QDcomApp() {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
   }, []);
 
-  const currentTenantRole = activeTenantId === "local-default" || activeTenantRoleTenantId !== activeTenantId ? "worker" : activeTenantRole;
+  const currentTenantRole = activeTenantId === "local-default" || activeTenantRoleContext.tenantId !== activeTenantId || activeTenantRoleContext.uid !== (userProfile?.firebaseUid ?? "") ? "worker" : activeTenantRoleContext.role;
   const activeProducts = products.filter((product) => product.status !== "hidden");
   const shownProducts = activeProducts.filter((product) => {
     const text = query.trim().toLocaleLowerCase("vi");
