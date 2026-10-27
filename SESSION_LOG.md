@@ -167,3 +167,62 @@
 - Không xóa hay ghi đè các mục lịch sử ở trên; mục này được append để giữ nguyên dấu vết các phiên trước.
 - Tại thời điểm ghi log, workspace đang ở nhánh `sync/current-main-updates-2026-10-10`; `HEAD`, `main` và `origin/main` cùng trỏ tới `b26ea27`. Các thay đổi trong workspace chưa được commit, trong đó có cả thay đổi staged và unstaged từ trước phiên Sidebar.
 - Chưa tạo commit, push, merge hay kích hoạt deploy Vercel. Trước khi phát hành cần xác nhận rõ phạm vi các thay đổi đang chờ, tránh vô tình đưa các chỉnh sửa tồn tại trước đó vào commit.
+
+## Phiên 2026-10-27 · Multi-Tenancy xưởng, PO, sản lượng, ví riêng tư và @q Bot
+
+### Mục tiêu và nguyên tắc
+- Làm trên nhánh `feature/new-feature-foundation-2026-10-27`; không sửa trực tiếp `main`.
+- Đây là nâng cấp mở rộng. Giữ luồng quản lý kho IndexedDB, Google OAuth, đăng nhập thẻ nhân viên cũ, QR chia sẻ và backup Google Drive.
+- Không ghi đè các mục phiên trước. Mục này được append vào cuối lịch sử để có thể tiếp tục ở phiên sau.
+- Quy tắc riêng tư ưu tiên cao nhất: Admin không đọc tài liệu ví/tổng thu nhập của từng Worker; Admin chỉ xem sản lượng, năng suất và các khoản phụ phí đang chờ duyệt.
+
+### Đã triển khai
+- Thêm mô hình `Tenant`, `TenantMembership`, `PurchaseOrder`, `ProductionEntry`, `WorkerExtra`, `TenantOperationsSettings`, `PersonalEarningsSummary` trong `types/tenant.ts`.
+- Thêm Dexie version 2 và các bảng theo tenant: PO, sản lượng, phụ phí, thành viên xưởng, cấu hình vận hành. Dữ liệu sản phẩm cũ được gán tenant `local-default` trong migration; không xóa dữ liệu hiện hữu.
+- Thêm bộ chọn tenant dùng cho giao diện, tải lại danh mục kho theo tenant đang chọn; tenant ID trên localStorage chỉ là bộ chọn giao diện, không được xem là bằng chứng phân quyền.
+- Thêm dịch vụ Firebase tạo xưởng và xác minh thành viên theo UID Google + mã thẻ nhân viên. Role `admin/worker` được lấy từ membership trên Firestore, không lấy từ nội dung chat.
+- Thêm dịch vụ Firestore cho PO, đơn giá công đoạn, sản lượng, phụ phí, thành viên, cấu hình giờ nộp, ví cá nhân và chat xưởng theo tenant.
+- Thêm Cloud Functions tính lại thu nhập đã duyệt ở phía máy chủ; tài liệu `earnings/{workerUid}` và các kỳ ngày/tuần/tháng/quý/năm chỉ cho chính Worker đọc. Client bị cấm ghi tài liệu earnings.
+- Thêm Firestore rules và composite indexes cho tenant, PO, đơn giá, sản lượng, phụ phí, settings, earnings và tin nhắn xưởng.
+- Thêm dashboard glassmorphism `Sản lượng xưởng`: tạo xưởng, kết nối tenant, PO nhiều công đoạn/đơn giá, ngày nhập và hạn xuất, QR PO, cảnh báo hạn, duyệt sản lượng/phụ phí, cài chu kỳ 1–3 giờ, xếp hạng theo kỳ và báo động trễ nộp/năng suất thấp.
+- Thêm Worker dashboard: nhập sản lượng theo PO/công đoạn, quét QR, khai báo công đoạn phát sinh, gửi phụ phí chờ duyệt, lịch sử, đồng hồ nhắc nộp và ví thu nhập riêng tư theo ngày/tuần/tháng/quý/năm.
+- Thêm phòng chat xưởng mới nằm dưới `tenants/{tenantId}/rooms/main/messages`. Các câu hỏi `@q` được trả lời cục bộ theo role; nội dung trả lời không ghi vào chat chung. Admin có thể hỏi PO/tổng sản lượng/năng suất; Worker chỉ tra cứu kho, quy trình đã cấu hình và ví của chính mình.
+- Khi tenant khác `local-default` đang hoạt động, mục Cộng đồng trong giao diện chuyển người dùng sang chat xưởng tenant thay vì chat cộng đồng dùng chung cũ.
+- Tách backup Google Drive theo tenant: giữ tên file backup cũ cho `local-default`, các tenant khác có file riêng; tránh tenant này ghi đè backup tenant khác.
+- Bổ sung CI để build Cloud Functions và chạy kiểm tra Firestore rules bằng Emulator; thêm kiểm thử quyền đọc ví, cô lập tenant, duyệt phụ phí và quyền gửi sản lượng.
+- Xóa file `lib/production/productionRepository.ts` chưa được sử dụng vì nó dựa vào quyền role truyền từ client và có thể gây hiểu nhầm về ranh giới bảo mật. Dịch vụ Firestore có rules là nguồn dữ liệu có thẩm quyền.
+
+### File đã tạo
+- `SO_DO_CAU_TRUC_TONG_QUAT.md`
+- `types/tenant.ts`
+- `lib/tenancy/authorization.ts`
+- `lib/tenancy/activeTenant.ts`
+- `lib/services/tenantService.ts`
+- `lib/services/workshopFirestoreService.ts`
+- `components/workshop-dashboard.tsx`
+- `functions/package.json`
+- `functions/tsconfig.json`
+- `functions/src/index.ts`
+- `firestore.indexes.json`
+- `tests/security/package.json`
+- `tests/security/rules.test.mjs`
+
+### File đã sửa
+- `types/product.ts`, `lib/db/qdcomDB.ts`, `lib/services/productService.ts`, `lib/bot/qBotParser.ts`
+- `components/qdcom-app.tsx`, `components/community-chat.tsx`, `app/globals.css`
+- `lib/sync/googleDriveBackup.ts`, `firestore.rules`, `firebase.json`
+- `.github/workflows/ci.yml`, `README.md`, `File.md`, `SESSION_LOG.md`
+
+### Kiểm tra
+- Một số lượt CI đầu tiên thất bại khi phát hiện lỗi lint/TypeScript và thiếu Java 21 cho Firestore Emulator; đã sửa theo lỗi thực tế, không bỏ qua cổng kiểm tra.
+- Một workflow trước đó đã PASS lint, TypeScript, build Next.js, build Cloud Functions và nạp rules vào Firestore Emulator.
+- Bộ kiểm thử Emulator đã chạy và in: `PASS: tenant isolation, worker identity, private earnings, pending-extra review, and tenant chat rules.`
+- CI cuối cùng tại commit hiện tại cần được kiểm tra lại sau các thay đổi mới nhất; không ghi là PASS cho đến khi workflow mới nhất hoàn tất.
+- Chưa deploy Firestore rules/indexes/Cloud Functions lên Firebase production và chưa thực hiện thử nghiệm thực tế trên tài khoản Google của xưởng.
+
+### Việc còn lại / bàn giao
+- Kiểm tra workflow CI mới nhất của nhánh; sửa tiếp mọi lỗi phát sinh cho đến khi PASS.
+- Kiểm thử thủ công hai tài khoản (Admin và Worker) trên Firebase test project, đặc biệt: Admin không thể đọc earnings, Worker không thể đọc tenant khác, duyệt sản lượng kích hoạt tính ví.
+- Trước khi sử dụng production: cấu hình Firebase project, bật Google Authentication, deploy rules/indexes/functions; Cloud Functions có thể yêu cầu gói billing phù hợp.
+- Chat cộng đồng cũ vẫn được giữ để không phá luồng trước đây; người dùng tenant mới được hướng sang chat xưởng có tenant. Nếu muốn mọi nhóm/chat cũ cũng có tenant bắt buộc, cần lập kế hoạch migration riêng thay vì sửa trực tiếp để tránh khóa người dùng khỏi nhóm hiện có.
+- Chưa merge PR #2 vào `main`; PR đang để Draft để tránh đưa tính năng chưa deploy Firebase production vào luồng chính.
