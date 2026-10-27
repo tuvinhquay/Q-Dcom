@@ -18,3 +18,13 @@
 - Đã xác nhận `npm run lint`, `npx tsc --noEmit --pretty false`, `npm run build`, và nạp rules bằng Firebase Emulator thành công.
 - Đã khởi chạy máy chủ phát triển bằng `npm run dev`; địa chỉ cục bộ: `http://localhost:3000`.
 - Chưa triển khai rules lên Firebase production; cần cấu hình dự án/Google OAuth thực tế trước khi deploy.
+
+
+## Tiến độ phiên làm việc — 27/10/2026
+
+- Nhánh: `feature/new-feature-foundation-2026-10-27`; PR #2 đang Draft, chưa merge.
+- Bổ sung Multi-Tenancy tenantId cho dữ liệu xưởng, Dexie v2 migration, Firebase membership role, Firestore rules/indexes, Cloud Functions tính earnings riêng tư, dashboard Admin/Worker, PO/QR, sản lượng, phụ phí, chat xưởng và @q theo quyền.
+- Backup Google Drive được tách file theo tenant; backup mặc định cũ vẫn giữ tên `Q-Dcom_Backup.json.gz`.
+- Thêm security tests chạy bằng Firestore Emulator; test đã xác nhận tenant isolation, Worker UID, ví riêng tư, duyệt phụ phí chờ duyệt và chat xưởng.
+- Tài liệu kiến trúc chi tiết: `SO_DO_CAU_TRUC_TONG_QUAT.md`. Nhật ký phiên được append ở cuối `SESSION_LOG.md`.
+- Chưa deploy rules/indexes/Functions lên Firebase production. Kiểm tra CI mới nhất trước khi chốt trạng thái và không merge khi chưa PASS.
