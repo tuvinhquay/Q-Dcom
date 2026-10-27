@@ -37,5 +37,10 @@ jobs:
       - name: Build Firebase Functions
         working-directory: functions
         run: npm run build
+      - name: Set up Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
       - name: Validate Firestore rules with emulator
         run: npx --yes firebase-tools emulators:exec --only firestore --project demo-qdcom "echo Firestore rules loaded"
