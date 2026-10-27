@@ -29,6 +29,7 @@ import { parseBackup, parseSharePayload, serializeBackup, createSharePayload } f
 import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveStorageQuota } from "@/lib/sync/googleDriveBackup";
 import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
+import { getActiveTenantId, subscribeActiveTenantChange } from "@/lib/tenancy/activeTenant";
 import type { Product, ProductStatus } from "@/types/product";
 
 type PageKey = "inventory" | "bot" | "community" | "reports" | "workshop" | "about" | "privacy" | "settings";
@@ -128,6 +129,7 @@ function Badge({ status }: { status: ProductStatus }) {
 export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
+  const [activeTenantId, setActiveTenantId] = useState("local-default");
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
@@ -176,7 +178,14 @@ export function QDcomApp() {
       setUserProfile(readUserProfile());
       setMessages(savedMessages.length ? savedMessages : [{ id: Date.now(), role: "assistant", text: "Chào bạn! Mình là Q-Dcom Bot. Nhập mã mẫu, tên hàng hoặc vị trí kệ để bắt đầu tra cứu." }]);
     });
-    void Promise.all([listProducts(), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()])
+    const initialTenantId = getActiveTenantId();
+    setActiveTenantId(initialTenantId);
+    const unsubscribeTenant = subscribeActiveTenantChange((tenantId) => {
+      setActiveTenantId(tenantId);
+      setSelectedId(null);
+      void listProducts(tenantId).then(setProducts).catch((error: unknown) => notify(error instanceof Error ? error.message : "Không thể đổi dữ liệu sang xưởng đã chọn."));
+    });
+    void Promise.all([listProducts(initialTenantId), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()])
       .then(([loadedProducts, storedVocabulary, storedMembers]) => {
         setProducts(loadedProducts);
         setMembers(storedMembers);
@@ -186,6 +195,7 @@ export function QDcomApp() {
       })
       .catch((error: unknown) => notify(error instanceof Error ? error.message : "Không thể mở cơ sở dữ liệu ngoại tuyến."))
       .finally(() => setReady(true));
+    return unsubscribeTenant;
   }, []);
   useEffect(() => {
     if (messages.length) window.localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-80)));
@@ -282,7 +292,7 @@ export function QDcomApp() {
   function askBot(text: string) {
     const clean = text.trim(); if (!clean) return;
     appendMessage("user", clean);
-    const answer = parseQBotQuery(clean, products, vocabulary);
+    const answer = parseQBotQuery(clean, products, vocabulary, { tenantId: activeTenantId, role: "worker", uid: userProfile?.firebaseUid ?? userProfile?.peerId });
     appendMessage("assistant", answer.message, answer.products.map((product) => product.id));
     setBotInput(""); setPage("bot");
   }
@@ -705,7 +715,7 @@ export function QDcomApp() {
           {page === "community" && <>
             <div className="page-heading"><div><div className="eyebrow"><Users /> Kết nối thành viên</div><h1>Cộng đồng chat</h1><p>Tìm kiếm ID/QR, tạo nhóm và trao đổi tin nhắn. @q chỉ tra cứu dữ liệu IndexedDB cục bộ.</p></div></div>
             {userProfile.firebaseUid
-              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} />
+              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} tenantId={activeTenantId} role="worker" />
               : <section className="community-login-required glass"><LockKeyhole /><div><strong>Cần đăng nhập bằng Google</strong><p>Tài khoản ID cá nhân chỉ hoạt động trên thiết bị này. Đăng nhập Google để sử dụng danh bạ, nhóm và chat Firebase.</p>{isFirebaseConfigured && <GoogleDriveLoginButton label="Đăng nhập Google để kết nối" onAuthorized={handleGoogleAuthorization} onError={notify} />}</div></section>}
           </>}
 
