@@ -24,8 +24,9 @@ function normalize(text: string): string {
 
 export function classifyQBotPermission(question: string): QBotPermission {
   const text = normalize(question);
-  if (sensitiveTerms.some((term) => text.includes(normalize(term)))) return "financial_detail";
+  // A request explicitly scoped to the current user's own wallet is not a request for another worker's income.
   if (personalWalletTerms.some((term) => text.includes(normalize(term))) && /toi|minh|ca nhan/.test(text)) return "personal_wallet";
+  if (sensitiveTerms.some((term) => text.includes(normalize(term)))) return "financial_detail";
   if (overviewTerms.some((term) => text.includes(normalize(term)))) return "tenant_overview";
   if (procedureTerms.some((term) => text.includes(normalize(term)))) return "operation_procedure";
   if (inventoryTerms.some((term) => text.includes(normalize(term)))) return "inventory_lookup";
