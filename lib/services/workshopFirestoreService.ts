@@ -77,7 +77,11 @@ export async function deleteWorkshopPurchaseOrder(principal: TenantPrincipal, or
   const order = await getDoc(orderRef);
   if (!order.exists()) return;
   requireTenant(principal, String(order.data().tenantId ?? ""));
-  const rates = await getDocs(query(tenantCollection(principal.tenantId, "operationRates"), where("tenantId", "==", principal.tenantId), where("purchaseOrderId", "==", orderId)));
+  const [rates, production] = await Promise.all([
+    getDocs(query(tenantCollection(principal.tenantId, "operationRates"), where("tenantId", "==", principal.tenantId), where("purchaseOrderId", "==", orderId))),
+    getDocs(query(tenantCollection(principal.tenantId, "productionEntries"), where("tenantId", "==", principal.tenantId), where("purchaseOrderId", "==", orderId))),
+  ]);
+  if (!production.empty) throw new Error("Không thể xóa PO đã có lịch sử sản lượng; hãy giữ lại để bảo toàn lịch sử kiểm toán.");
   const batch = writeBatch(db());
   batch.delete(orderRef);
   rates.docs.forEach((entry) => batch.delete(entry.ref));
