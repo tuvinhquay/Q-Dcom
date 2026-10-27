@@ -14,6 +14,7 @@ import { startTransition, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { BackgroundVideo } from "@/components/background-video";
 import { CommunityChat } from "@/components/community-chat";
+import { WorkshopDashboard } from "@/components/workshop-dashboard";
 import { GlassmorphismAnimationBackground } from "@/components/glassmorphism-animation-background";
 import { GoogleDriveLoginButton } from "@/components/google-drive-login-button";
 import { ProductCard } from "@/components/products/ProductCard";
@@ -30,7 +31,7 @@ import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
 import type { Product, ProductStatus } from "@/types/product";
 
-type PageKey = "inventory" | "bot" | "community" | "reports" | "about" | "privacy" | "settings";
+type PageKey = "inventory" | "bot" | "community" | "reports" | "workshop" | "about" | "privacy" | "settings";
 type MenuItem =
   | { id: PageKey; label: string; icon: typeof Package; preview?: false }
   | { id: "food" | "productivity"; label: string; icon: typeof Package; preview: true };
@@ -53,6 +54,7 @@ const navGroups: { label: string; items: MenuItem[] }[] = [
       { id: "bot", label: "Tra cứu @q", icon: MessageCircle },
       { id: "community", label: "Cộng đồng chat", icon: Users },
       { id: "reports", label: "Tổng quan kho", icon: BarChart3 },
+      { id: "workshop", label: "Sản lượng xưởng", icon: TrendingUp },
     ],
   },
   {
@@ -76,6 +78,7 @@ const pageNames: Record<PageKey, string> = {
   bot: "Tra cứu @q",
   community: "Cộng đồng chat",
   reports: "Tổng quan kho",
+  workshop: "Quản lý sản lượng xưởng",
   about: "Giới thiệu Q-Dcom",
   privacy: "Chính sách bảo mật dữ liệu",
   settings: "Cài đặt chung",
@@ -679,6 +682,8 @@ export function QDcomApp() {
       </aside>
       <section className="main-panel"><header className="topbar glass"><div className="mobile-wordmark">Q-<b>Dcom</b></div><div className="breadcrumb">Không gian kho <ChevronRight size={13} /><strong>{pageNames[page]}</strong></div><div className="topbar-actions"><span className={`connection-pill drive-connection ${driveSyncStatus}`} title={driveSyncMessage || undefined}><i />{driveSyncStatus === "syncing" ? "Đang đồng bộ Drive" : driveSyncStatus === "synced" ? "Đã lưu trên Drive" : driveSyncStatus === "error" ? "Lỗi đồng bộ Drive" : driveConnected ? "Drive đã kết nối" : "Drive chưa kết nối"}</span><span className="topbar-divider" /><ProfileAvatar profile={userProfile} /></div></header>
         <div className="main-content">
+          {page === "workshop" && <WorkshopDashboard initialUid={userProfile.firebaseUid} displayName={userProfile.displayName} />}
+
           {page === "inventory" && <>
             <div className="page-heading"><div><div className="eyebrow"><Activity /> Trung tâm vận hành · Hôm nay</div><h1>Mẫu hàng & kho</h1><p>Theo dõi số lượng, tình trạng và vị trí lưu trữ.</p></div><button className="primary-btn" onClick={() => openEditor()}><Plus /> Thêm mẫu hàng</button></div>
             <div className="stat-grid"><StatCard label="Mẫu đang quản lý" value={String(activeProducts.length).padStart(2,"0")} foot="Mẫu hàng trong danh mục kho" icon={<Package />} /><StatCard label="Tổng tồn kho" value={String(quantityTotal)} foot="Đơn vị đang lưu tại kho" icon={<Boxes />} /><StatCard label="Sắp hết hàng" value={String(lowStock.length).padStart(2,"0")} foot="Mẫu còn từ 1 đến 4 sản phẩm" icon={<CircleAlert />} /><StatCard label="Vị trí lưu trữ" value={String(locationCount).padStart(2,"0")} foot="Kệ có mẫu đang lưu" icon={<MapPin />} /></div>
