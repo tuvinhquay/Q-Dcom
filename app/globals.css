@@ -696,3 +696,12 @@ button:disabled { cursor:not-allowed; opacity:.5; }
 .workshop-rank.rank-red strong,.workshop-rank.rank-red small { color:#fecaca; }
 @keyframes workshop-red-alert { from { box-shadow:0 0 3px #ef444450; } to { box-shadow:0 0 15px #ef4444d9; } }
 @media(prefers-reduced-motion:reduce) { .workshop-rank.rank-red .workshop-rank-medal { animation:none; } .workshop-list-row em { animation:none; } }
+
+.workshop-chat-messages { display:flex; max-height:340px; min-height:120px; flex-direction:column; gap:8px; overflow:auto; padding:4px; }
+.workshop-chat-message { display:grid; max-width:88%; align-self:flex-start; gap:4px; padding:9px 11px; border:1px solid #ffffff25; border-radius:8px 8px 8px 2px; background:#ffffff12; }
+.workshop-chat-message.mine { align-self:flex-end; border-color:#93c5fd50; border-radius:8px 8px 2px 8px; background:#2563eb35; }
+.workshop-chat-message strong { color:#eaf2ff; font-size:9px; }
+.workshop-chat-message p { margin:0; color:#f1f5f9; font-size:10px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.workshop-chat-message small { color:#a7bad3; font-size:8px; }
+.workshop-chat-compose { display:flex; gap:7px; }
+.workshop-chat-compose input { flex:1; min-width:0; }
