@@ -689,3 +689,10 @@ button:disabled { cursor:not-allowed; opacity:.5; }
   .workshop-list-row .workshop-actions { align-self:flex-end; }
   .workshop-tenant-strip { align-items:flex-start; }
 }
+
+.workshop-section-heading { display:flex; align-items:center; justify-content:space-between; gap:9px; }
+.workshop-section-heading select { width:auto; max-width:145px; min-height:31px; padding:5px 7px; border:1px solid #ffffff40; border-radius:5px; background:#ffffffec; color:#34465d; font-size:9px; }
+.workshop-rank.rank-red .workshop-rank-medal { background:#991b1b; color:#fff; box-shadow:0 0 10px #ef444480; animation:workshop-red-alert .9s ease-in-out infinite alternate; }
+.workshop-rank.rank-red strong,.workshop-rank.rank-red small { color:#fecaca; }
+@keyframes workshop-red-alert { from { box-shadow:0 0 3px #ef444450; } to { box-shadow:0 0 15px #ef4444d9; } }
+@media(prefers-reduced-motion:reduce) { .workshop-rank.rank-red .workshop-rank-medal { animation:none; } .workshop-list-row em { animation:none; } }
