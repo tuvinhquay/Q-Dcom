@@ -1,11 +1,12 @@
 "use client";
 
+/** Shell ứng dụng phía client: phối hợp điều hướng, kho, cộng đồng và dịch vụ ngoại tuyến. */
 import {
   Activity, ArrowRight, BadgeCheck, BarChart3, Bot, Boxes, Check, CheckCircle2, ChevronRight,
-  Camera, CircleAlert, Download, ImagePlus, LayoutDashboard, LockKeyhole, LogOut,
+  Camera, CircleAlert, Download, ImagePlus, LockKeyhole, LogOut,
   MapPin, MessageCircle, Package, Paperclip, Pencil, Plus, QrCode, Rocket, Search, Send,
-  Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sparkles, Trash2,
-  TrendingUp, Utensils, Upload, Users, Video, X, IdCard, UserRound, BriefcaseBusiness,
+  ShieldCheck, SlidersHorizontal, Sparkles, Trash2,
+  Upload, Users, Video, X, IdCard, UserRound, BriefcaseBusiness,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -16,24 +17,24 @@ import { BackgroundVideo } from "@/components/background-video";
 import { CommunityChat } from "@/components/community-chat";
 import { GlassmorphismAnimationBackground } from "@/components/glassmorphism-animation-background";
 import { GoogleDriveLoginButton } from "@/components/google-drive-login-button";
+import { IndustryCustomFields } from "@/components/production/industry-custom-fields";
+import { ProductionReminderScheduler } from "@/components/production/production-reminder-scheduler";
+import { MobileNavMenu, SidebarMenu, type PageKey } from "@/components/layout/sidebar-menu";
+import { SlideContainer } from "@/components/layout/slide-container";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductImage } from "@/components/products/ProductImage";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { SearchBar } from "@/components/search/SearchBar";
 import { parseQBotQuery } from "@/lib/bot/qBotParser";
 import { copyDefaultVocabulary, type BotIntent, type BotVocabulary } from "@/lib/bot/vocabulary";
-import { qdcomDB, type QDcomMember } from "@/lib/db/qdcomDB";
+import { qdcomDB, type LocalProductionRecord, type QDcomMember } from "@/lib/db/qdcomDB";
 import { isFirebaseConfigured, signOutFirebaseUser, type GoogleAuthSession } from "@/lib/firebase";
 import { parseBackup, parseSharePayload, serializeBackup, createSharePayload } from "@/lib/sync/qdcomSync";
-import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveStorageQuota } from "@/lib/sync/googleDriveBackup";
+import { syncBackupToGoogleDrive } from "@/lib/sync/googleDriveBackup";
 import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
 import type { Product, ProductStatus } from "@/types/product";
 
-type PageKey = "inventory" | "bot" | "community" | "reports" | "about" | "privacy" | "settings";
-type MenuItem =
-  | { id: PageKey; label: string; icon: typeof Package; preview?: false }
-  | { id: "food" | "productivity"; label: string; icon: typeof Package; preview: true };
 type ChatMessage = { id: number; role: "user" | "assistant"; text: string; productIds?: string[] };
 type Settings = { videoEnabled: boolean; glassBlur: number; glassOpacity: number; videoTint: string };
 type UserProfile = { peerId: string; googleSub?: string; firebaseUid?: string; displayName: string; email: string; avatar: string; memberId?: string; specialty?: string };
@@ -45,34 +46,9 @@ const PROFILE_KEY = "qdcom.user_profile.v1";
 const LOCAL_MEMBERS_KEY = "qdcom.local_members.v1";
 const PEER_KEY = "qdcom.peer_id.v1";
 const defaults: Settings = { videoEnabled: true, glassBlur: 18, glassOpacity: 74, videoTint: "#2563eb" };
-const navGroups: { label: string; items: MenuItem[] }[] = [
-  {
-    label: "📱 Quản lý chính",
-    items: [
-      { id: "inventory", label: "Mẫu hàng & Kho", icon: LayoutDashboard },
-      { id: "bot", label: "Tra cứu @q", icon: MessageCircle },
-      { id: "community", label: "Cộng đồng chat", icon: Users },
-      { id: "reports", label: "Tổng quan kho", icon: BarChart3 },
-    ],
-  },
-  {
-    label: "💡 Giới thiệu & phát triển dự án",
-    items: [
-      { id: "about", label: "Giới thiệu Q-Dcom", icon: Rocket },
-      { id: "privacy", label: "Chính sách bảo mật dữ liệu", icon: ShieldCheck },
-    ],
-  },
-  { label: "⚙️ Hệ thống", items: [{ id: "settings", label: "Cài đặt", icon: SettingsIcon }] },
-  {
-    label: "⏳ Tính năng đang phát triển",
-    items: [
-      { id: "food", label: "Đặt đồ ăn nhanh", icon: Utensils, preview: true },
-      { id: "productivity", label: "Tính sản lượng & Năng suất", icon: TrendingUp, preview: true },
-    ],
-  },
-];
 const pageNames: Record<PageKey, string> = {
   inventory: "Mẫu hàng & Kho",
+  productivity: "Sản lượng & Chuyền may",
   bot: "Tra cứu @q",
   community: "Cộng đồng chat",
   reports: "Tổng quan kho",
@@ -80,7 +56,6 @@ const pageNames: Record<PageKey, string> = {
   privacy: "Chính sách bảo mật dữ liệu",
   settings: "Cài đặt chung",
 };
-const previewMessage = "Tính năng đang trong quá trình hoàn thiện và sẽ ra mắt ở phiên bản tiếp theo!";
 const statusNames: Record<ProductStatus, string> = { available: "Còn hàng", low_stock: "Sắp hết", out_of_stock: "Hết hàng", hidden: "Đang ẩn" };
 
 function readSaved<T>(key: string, fallback: T): T {
@@ -101,10 +76,6 @@ function readLocalMembers(): UserProfile[] {
     typeof profile.displayName === "string" && typeof profile.specialty === "string" &&
     typeof profile.email === "string" && typeof profile.avatar === "string") : [];
 }
-function formatBytes(value: number) {
-  const gigabytes = value / (1024 ** 3);
-  return `${gigabytes.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} GB`;
-}
 function stockStatus(quantity: number): ProductStatus { return quantity <= 0 ? "out_of_stock" : quantity <= 4 ? "low_stock" : "available"; }
 function newId() { return `qd${Math.random().toString(36).slice(2, 8)}`; }
 function emptyDraft(product?: Product): ProductDraft {
@@ -117,14 +88,53 @@ function emptyDraft(product?: Product): ProductDraft {
   return { id: newId(), name: "", brand: "", color: "", size: [], quantity: 0, image_urls: [], image_notes: "", description: "", category: "Giày", status: "out_of_stock", location: "", created_by: "Trần Ngọc", search_keywords: [] };
 }
 
+/** Tạo snapshot nhất quán của dữ liệu local, dùng chung cho backup tải về và Drive. */
+async function serializeLocalBackup(
+  fallbackVocabulary: BotVocabulary,
+  ownerUid: string | null,
+  options: { omitBase64Images?: boolean } = {},
+) {
+  return qdcomDB.transaction(
+    "r",
+    [
+      qdcomDB.products,
+      qdcomDB.botVocabulary,
+      qdcomDB.members,
+      qdcomDB.industryCustomFields,
+      qdcomDB.productionRecords,
+      qdcomDB.localProduction,
+    ],
+    async () => {
+      const [allProducts, storedVocabulary, allMembers, industryCustomFields, productionRecords, localProduction] = await Promise.all([
+        qdcomDB.products.toArray(),
+        qdcomDB.botVocabulary.get("main"),
+        qdcomDB.members.toArray(),
+        qdcomDB.industryCustomFields.toArray(),
+        qdcomDB.productionRecords.toArray(),
+        ownerUid
+          ? qdcomDB.localProduction.where("ownerUid").equals(ownerUid).toArray()
+          : Promise.resolve([] as LocalProductionRecord[]),
+      ]);
+      return serializeBackup(allProducts, storedVocabulary?.value ?? fallbackVocabulary, allMembers, {
+        ...options,
+        industryCustomFields,
+        productionRecords,
+        localProduction,
+      });
+    },
+  );
+}
+
 function Badge({ status }: { status: ProductStatus }) {
   const tone = status === "low_stock" ? "low" : status === "out_of_stock" ? "out" : status === "hidden" ? "hidden" : "";
   return <span className={`status-badge ${tone}`}><i />{statusNames[status]}</span>;
 }
 
+/** Tải hồ sơ/dữ liệu cục bộ và kết xuất trang đang hoạt động cùng các hộp thoại dùng chung. */
 export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
+  const [backupRevision, setBackupRevision] = useState(0);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
@@ -156,8 +166,6 @@ export function QDcomApp() {
   const [driveConnected, setDriveConnected] = useState(false);
   const [driveSyncStatus, setDriveSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const [driveSyncMessage, setDriveSyncMessage] = useState("");
-  const [driveQuota, setDriveQuota] = useState<GoogleDriveStorageQuota | null>(null);
-  const [driveQuotaError, setDriveQuotaError] = useState("");
   const messageEnd = useRef<HTMLDivElement>(null);
   const backupInput = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -192,19 +200,18 @@ export function QDcomApp() {
   useEffect(() => {
     if (!ready || !userProfile || !driveAccessToken.current) return;
     const accessToken = driveAccessToken.current;
-    const contents = serializeBackup(products, vocabulary, members);
     const timeout = window.setTimeout(() => {
       setDriveSyncStatus("syncing");
-      const sync = driveSyncQueue.current.then(
-        () => syncBackupToGoogleDrive(accessToken, contents),
-        () => syncBackupToGoogleDrive(accessToken, contents),
+      const runSync = async () => syncBackupToGoogleDrive(
+        accessToken,
+        await serializeLocalBackup(vocabulary, userProfile.firebaseUid ?? null),
       );
+      const sync = driveSyncQueue.current.then(runSync, runSync);
       driveSyncQueue.current = sync;
       void sync.then(() => {
         if (driveAccessToken.current !== accessToken) return;
         setDriveSyncStatus("synced");
         setDriveSyncMessage("");
-        void refreshDriveQuota(accessToken);
       }).catch((error: unknown) => {
         if (driveAccessToken.current !== accessToken) return;
         setDriveSyncStatus("error");
@@ -212,7 +219,7 @@ export function QDcomApp() {
       });
     }, 500);
     return () => window.clearTimeout(timeout);
-  }, [members, products, ready, userProfile, vocabulary]);
+  }, [backupRevision, members, products, ready, userProfile, vocabulary]);
   useEffect(() => {
     if (!userProfile || userProfile.firebaseUid || userProfile.googleSub) return;
     const warnBeforeExit = (event: BeforeUnloadEvent) => {
@@ -337,36 +344,18 @@ export function QDcomApp() {
     driveAccessToken.current = accessToken;
     setDriveConnected(true);
     setDriveSyncStatus("syncing");
-    setDriveQuota(null);
-    void refreshDriveQuota(accessToken);
     setUserProfile(profile);
     setPage("inventory");
     notify(`Đã đăng nhập Google: ${profile.displayName}. Đang sao lưu dữ liệu lên Google Drive.`);
   }
-  async function refreshDriveQuota(accessToken: string) {
-    try {
-      setDriveQuota(await getGoogleDriveStorageQuota(accessToken));
-      setDriveQuotaError("");
-    } catch (error) {
-      setDriveQuotaError(error instanceof Error ? error.message : "Không thể tải dung lượng Google Drive.");
-    }
-  }
   async function syncCurrentDriveBackup(accessToken: string) {
-    const contents = await qdcomDB.transaction("r", qdcomDB.products, qdcomDB.botVocabulary, qdcomDB.members, async () => {
-      const [allProducts, storedVocabulary, allMembers] = await Promise.all([
-        qdcomDB.products.toArray(),
-        qdcomDB.botVocabulary.get("main"),
-        qdcomDB.members.toArray(),
-      ]);
-      return serializeBackup(allProducts, storedVocabulary?.value ?? vocabulary, allMembers);
-    });
+    const contents = await serializeLocalBackup(vocabulary, userProfile?.firebaseUid ?? null);
     const sync = driveSyncQueue.current.then(
       () => syncBackupToGoogleDrive(accessToken, contents),
       () => syncBackupToGoogleDrive(accessToken, contents),
     );
     driveSyncQueue.current = sync;
     await sync;
-    await refreshDriveQuota(accessToken);
   }
   function submitRegistration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -470,8 +459,6 @@ export function QDcomApp() {
     setDriveConnected(false);
     setDriveSyncStatus("idle");
     setDriveSyncMessage("");
-    setDriveQuota(null);
-    setDriveQuotaError("");
     window.localStorage.removeItem(PROFILE_KEY);
     setUserProfile(null);
     notify("Đã đăng xuất khỏi thiết bị này.");
@@ -563,8 +550,7 @@ export function QDcomApp() {
   }
   async function exportBackup() {
     try {
-      const [allProducts, storedVocabulary, allMembers] = await Promise.all([qdcomDB.products.toArray(), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()]);
-      const contents = serializeBackup(allProducts, storedVocabulary?.value ?? vocabulary, allMembers, {
+      const contents = await serializeLocalBackup(vocabulary, userProfile?.firebaseUid ?? null, {
         omitBase64Images: omitBackupImages,
       });
       const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
@@ -585,15 +571,30 @@ export function QDcomApp() {
     if (file.size > 25_000_000) { notify("File backup vượt giới hạn 25 MB."); return; }
     try {
       const backup = parseBackup(await file.text());
-      await qdcomDB.transaction("rw", qdcomDB.products, qdcomDB.botVocabulary, qdcomDB.members, async () => {
-        await qdcomDB.products.bulkPut(backup.products);
-        await qdcomDB.botVocabulary.put({ id: "main", value: backup.botVocabulary });
-        await qdcomDB.members.bulkPut(backup.members);
-      });
+      await qdcomDB.transaction(
+        "rw",
+        [
+          qdcomDB.products,
+          qdcomDB.botVocabulary,
+          qdcomDB.members,
+          qdcomDB.industryCustomFields,
+          qdcomDB.productionRecords,
+          qdcomDB.localProduction,
+        ],
+        async () => {
+          await qdcomDB.products.bulkPut(backup.products);
+          await qdcomDB.botVocabulary.put({ id: "main", value: backup.botVocabulary });
+          await qdcomDB.members.bulkPut(backup.members);
+          await qdcomDB.industryCustomFields.bulkPut(backup.industryCustomFields);
+          await qdcomDB.productionRecords.bulkPut(backup.productionRecords);
+          await qdcomDB.localProduction.bulkPut(backup.localProduction);
+        },
+      );
       setProducts(await listProducts());
       setVocabulary(backup.botVocabulary);
       setMembers(await qdcomDB.members.toArray());
-      notify(`Đã nhập ${backup.products.length} mẫu hàng và dữ liệu nhóm Q-Dcom.`);
+      setBackupRevision((revision) => revision + 1);
+      notify(`Đã nhập ${backup.products.length} mẫu hàng, ${backup.productionRecords.length} bản ghi sản lượng cũ và ${backup.localProduction.length} bản ghi workspace cục bộ.`);
     } catch (error) { notify(error instanceof Error ? error.message : "File backup không hợp lệ."); }
   }
   async function addImages(event: ChangeEvent<HTMLInputElement>) {
@@ -647,38 +648,10 @@ export function QDcomApp() {
   return <main className="app-frame" style={appStyle}>
     <BackgroundVideo enabled={settings.videoEnabled} tint={settings.videoTint} />
     <div className="app-layout">
-      <aside className="sidebar glass">
-        <div className="brand"><div className="brand-mark"><Boxes /></div><div><div className="brand-word">Q-<span>Dcom</span></div><div className="brand-caption">Quản lý kho & mẫu hàng</div></div></div>
-        <nav className="nav-stack" aria-label="Điều hướng chính">
-          {navGroups.map((group) => <section className="nav-group" key={group.label} aria-label={group.label}>
-            <div className="nav-label">{group.label}</div>
-            {group.items.map(({ id, label, icon: Icon, preview }, index) => {
-              const isActive = !preview && page === id;
-              return <button
-                key={id}
-                type="button"
-                className={`nav-link ${isActive ? "active" : ""} ${preview ? "preview" : ""}`}
-                style={{ animationDelay: `${index * 45}ms` }}
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => {
-                  if (preview) notify(previewMessage);
-                  else setPage(id);
-                }}
-              >
-                <Icon aria-hidden="true" />
-                <span>{label}</span>
-                {id === "inventory" && <span className="nav-count">{activeProducts.length}</span>}
-                {preview && <span className="nav-badge">Đang phát triển</span>}
-              </button>;
-            })}
-          </section>)}
-        </nav>
-        <div className="sidebar-spacer" />
-        <div className="warehouse-switch"><div className="warehouse-icon"><MapPin /></div><div><small>Kho đang hoạt động</small><strong>Kho trung tâm · HCM</strong></div></div>
-        <div className="profile-row"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile?.displayName ?? "Trần Ngọc"}</strong><span>{userProfile?.memberId ? `ID: ${userProfile.memberId}` : userProfile?.email || (userProfile ? "Khách" : "Quản lý kho")}</span></div></div>
-      </aside>
+      <SidebarMenu page={page} onNavigate={setPage} itemCount={activeProducts.length} profile={userProfile} />
       <section className="main-panel"><header className="topbar glass"><div className="mobile-wordmark">Q-<b>Dcom</b></div><div className="breadcrumb">Không gian kho <ChevronRight size={13} /><strong>{pageNames[page]}</strong></div><div className="topbar-actions"><span className={`connection-pill drive-connection ${driveSyncStatus}`} title={driveSyncMessage || undefined}><i />{driveSyncStatus === "syncing" ? "Đang đồng bộ Drive" : driveSyncStatus === "synced" ? "Đã lưu trên Drive" : driveSyncStatus === "error" ? "Lỗi đồng bộ Drive" : driveConnected ? "Drive đã kết nối" : "Drive chưa kết nối"}</span><span className="topbar-divider" /><ProfileAvatar profile={userProfile} /></div></header>
         <div className="main-content">
+          <SlideContainer pageKey={page}>
           {page === "inventory" && <>
             <div className="page-heading"><div><div className="eyebrow"><Activity /> Trung tâm vận hành · Hôm nay</div><h1>Mẫu hàng & kho</h1><p>Theo dõi số lượng, tình trạng và vị trí lưu trữ.</p></div><button className="primary-btn" onClick={() => openEditor()}><Plus /> Thêm mẫu hàng</button></div>
             <div className="stat-grid"><StatCard label="Mẫu đang quản lý" value={String(activeProducts.length).padStart(2,"0")} foot="Mẫu hàng trong danh mục kho" icon={<Package />} /><StatCard label="Tổng tồn kho" value={String(quantityTotal)} foot="Đơn vị đang lưu tại kho" icon={<Boxes />} /><StatCard label="Sắp hết hàng" value={String(lowStock.length).padStart(2,"0")} foot="Mẫu còn từ 1 đến 4 sản phẩm" icon={<CircleAlert />} /><StatCard label="Vị trí lưu trữ" value={String(locationCount).padStart(2,"0")} foot="Kệ có mẫu đang lưu" icon={<MapPin />} /></div>
@@ -710,18 +683,16 @@ export function QDcomApp() {
             <div className="report-grid"><section className="report-card glass"><h2>Phân bổ theo danh mục</h2><p>Số mẫu hàng đang lưu trữ</p><div className="category-list">{Array.from(new Set(activeProducts.map((product) => product.category || "Khác"))).map((category) => { const count = activeProducts.filter((product) => (product.category || "Khác") === category).length; return <div className="category-row" key={category}><span>{category}</span><div className="category-track"><span style={{ width: `${activeProducts.length ? count / activeProducts.length * 100 : 0}%` }} /></div><strong>{count}</strong></div>; })}{!activeProducts.length && <p className="aside-note">Chưa có dữ liệu để tổng hợp.</p>}</div></section><section className="report-card glass"><h2>Mẫu cần lưu ý</h2><p>Tồn kho từ 0 đến 4 sản phẩm</p><div className="low-stock-list">{activeProducts.filter((product) => product.quantity <= 4).sort((a,b) => a.quantity-b.quantity).map((product) => <button className="low-stock-item" key={product.id} onClick={() => setSelectedId(product.id)}><ProductImage product={product} className="low-thumb" /><span className="low-stock-copy"><strong>{product.name}</strong><small>{product.id} · {product.location}</small></span><span className="low-stock-number">{product.quantity} còn</span></button>)}{!activeProducts.some((product) => product.quantity <= 4) && <p className="aside-note">Không có mẫu nào dưới ngưỡng tồn kho.</p>}</div></section></div>
           </>}
 
+          {page === "productivity" && <IndustryCustomFields key={userProfile.firebaseUid ?? "local-profile"} uid={userProfile.firebaseUid ?? null} displayName={userProfile.displayName} />}
+
           {page === "settings" && <>
             <div className="page-heading"><div><div className="eyebrow"><SlidersHorizontal /> Tùy chỉnh không gian</div><h1>Cài đặt chung</h1><p>Hồ sơ nhóm, đồng bộ dữ liệu và giao diện kho.</p></div></div>
             <div className="settings-grid">
               <section className="settings-card glass wide">
-                <SettingsHead icon={<Upload />} title="Google Drive & bản sao lưu" description="Kho hàng luôn nằm trong IndexedDB. Google Drive chỉ nhận bản sao JSON nén Gzip trong vùng dữ liệu riêng." />
+                <SettingsHead icon={<Upload />} title="Google Drive & bản sao lưu" description="Kho hàng luôn nằm trong IndexedDB. Google Drive chỉ nhận bản sao JSON nén Gzip trong appDataFolder; ứng dụng không đọc các tệp Drive khác." />
                 <div className="settings-card-body">
-                  {driveQuota ? driveQuota.totalBytes !== null ? <>
-                    <div className="drive-quota-label"><strong>Dung lượng Google Drive</strong><span>{formatBytes(driveQuota.usedBytes)} / {formatBytes(driveQuota.totalBytes)}</span></div>
-                    <progress className="drive-quota-progress" value={Math.min(100, driveQuota.usedBytes / driveQuota.totalBytes * 100)} max={100} aria-label="Dung lượng đã dùng trên Google Drive" />
-                  </> : <p className="aside-note">Đã sử dụng {formatBytes(driveQuota.usedBytes)}. Google không báo giới hạn tổng dung lượng của tài khoản này.</p> : <p className="aside-note">{driveConnected ? driveQuotaError || "Đang tải dung lượng Google Drive…" : "Đăng nhập Google để xem dung lượng Drive và bật sao lưu tự động."}</p>}
+                  <p className="aside-note">Chỉ yêu cầu quyền lưu trữ appDataFolder (`drive.appdata`) theo nguyên tắc tối thiểu. Vì không xin quyền đọc metadata toàn Drive, ứng dụng không hiển thị quota tổng của tài khoản.</p>
                   {userProfile && !userProfile.firebaseUid && !userProfile.googleSub && <p className="local-backup-warning" role="status">Hãy nhấn Lưu trữ / Tải về bản sao dữ liệu trước khi thoát. Dữ liệu ID cá nhân chỉ tồn tại trên thiết bị này.</p>}
-                  {driveQuotaError && driveConnected && <p className="drive-sync-error" role="alert">{driveQuotaError}</p>}
                 </div>
               </section>
               <section className="settings-card glass"><SettingsHead icon={<Video />} title="Giao diện & video nền" description="Đăng nhập: public/videos/login-bg-video.mp4 · Ứng dụng: public/videos/app-bg-video.mp4." /><div className="settings-card-body"><SettingSwitch title="Bật video nền" description="Nền tĩnh vẫn hiển thị khi chưa có tệp video." checked={settings.videoEnabled} onClick={() => saveSettings({ ...settings, videoEnabled: !settings.videoEnabled })} /><SettingRange title="Độ mờ kính" value={settings.glassBlur} min={0} max={32} suffix="px" onChange={(value) => saveSettings({ ...settings, glassBlur: value })} /><SettingRange title="Độ trong suốt" value={settings.glassOpacity} min={45} max={95} suffix="%" onChange={(value) => saveSettings({ ...settings, glassOpacity: value })} /><div className="setting-row"><div className="setting-copy"><strong>Màu phủ video</strong><small>Chọn sắc độ phủ nhẹ lên nền.</small></div><input className="tint-input" type="color" value={settings.videoTint} aria-label="Màu phủ video" onChange={(event) => saveSettings({ ...settings, videoTint: event.target.value })} /></div></div></section>
@@ -763,17 +734,13 @@ export function QDcomApp() {
               </div>
             </article>
           </section>}
+          </SlideContainer>
         </div>
       </section>
     </div>
 
-    <nav className="bottom-nav" aria-label="Điều hướng di động">{navGroups.flatMap(({ items }) => items).map(({ id, label, icon: Icon, preview }) => {
-      const isActive = !preview && page === id;
-      return <button key={id} type="button" className={`${isActive ? "active" : ""} ${preview ? "preview" : ""}`} aria-current={isActive ? "page" : undefined} onClick={() => {
-        if (preview) notify(previewMessage);
-        else setPage(id);
-      }}><Icon aria-hidden="true" /><span>{label}</span></button>;
-    })}</nav>
+    <ProductionReminderScheduler uid={userProfile.firebaseUid ?? null} onError={notify} />
+    <MobileNavMenu page={page} onNavigate={setPage} />
 
     {selected && !editorOpen && <div className="detail-backdrop" onClick={(event) => event.target === event.currentTarget && setSelectedId(null)}><section className="detail-modal glass" role="dialog" aria-modal="true" aria-label={`Chi tiết ${selected.name}`}><div className="modal-head"><h2>Hồ sơ mẫu hàng</h2><button className="modal-close" aria-label="Đóng" onClick={() => setSelectedId(null)}><X /></button></div><div className="detail-body"><div className="detail-visual"><ProductImage product={selected} className="detail-image" /><span className="image-count">Ảnh {selected.image_urls.length ? "01" : "0"} / {String(selected.image_urls.length).padStart(2,"0")}</span></div><div className="detail-info"><div className="eyebrow"><Package /> {selected.category}</div><h2>{selected.name}</h2><div className="detail-id">Mã định danh: {selected.id}</div><div className="detail-status-row"><Badge status={selected.status} /><span className="spec-value">Cập nhật {new Date(selected.updated_at).toLocaleDateString("vi-VN")}</span></div><div className="detail-specs"><Spec label="Thương hiệu" value={selected.brand} /><Spec label="Màu sắc" value={selected.color} /><div className="all-columns"><div className="spec-label">Kích cỡ có sẵn</div><div className="size-tags">{selected.size.length ? selected.size.map((size) => <span className="size-tag" key={size}>{size}</span>) : <span className="aside-note">Chưa khai báo</span>}</div></div><Spec label="Tồn kho tổng" value={`${selected.quantity} sản phẩm`} /><Spec label="Vị trí lưu trữ" value={selected.location || "Chưa xếp kệ"} /></div><div className="detail-description"><h3>Mô tả mẫu hàng</h3><p>{selected.description || "Chưa có mô tả."}</p>{selected.image_notes && <div className="image-note"><ImagePlus size={12} />Ghi chú ảnh: {selected.image_notes}</div>}</div><div className="detail-actions"><button className="secondary-btn" onClick={() => openEditor(selected)}><Pencil /> Chỉnh sửa</button><button className="primary-btn" onClick={() => { setStockDelta("0"); setStockOpen(true); }}><Boxes /> Cập nhật tồn kho</button></div></div></div></section></div>}
 

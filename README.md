@@ -2,6 +2,8 @@
 
 Ứng dụng nội bộ quản lý mẫu hàng, tồn kho và vị trí lưu trữ. Q-Dcom không có luồng mua hàng, giỏ hàng, đặt hàng hay thanh toán.
 
+Tài liệu kiến trúc và bàn giao cho agent nằm trong [SO_DO_CAU_TRUC_TONG_QUAT.md](SO_DO_CAU_TRUC_TONG_QUAT.md).
+
 ## Chạy local
 
 Yêu cầu Node.js 20.9 trở lên.
@@ -34,15 +36,15 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
 
 Trong Firebase Console, chỉ bật Google trong Authentication > Sign-in method, đồng thời thêm domain ứng dụng vào Authorized domains. Anonymous Auth không được sử dụng; Firestore rules từ chối mọi phiên anonymous. Các biến cấu hình Firebase `NEXT_PUBLIC_*` được nhúng vào bundle trình duyệt; không đặt secret/token nhạy cảm vào những biến này. Khai báo các biến tương ứng trong môi trường deploy.
 
-Đăng nhập Google dùng Firebase Auth popup và yêu cầu scope `drive.appdata` để lưu backup trong vùng dữ liệu riêng, cùng `drive.metadata.readonly` để đọc thanh dung lượng Drive. Bật Google Drive API và, nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console. Token chỉ được giữ trong bộ nhớ ứng dụng khi đồng bộ.
+Đăng nhập Google dùng Firebase Auth popup và yêu cầu duy nhất scope `https://www.googleapis.com/auth/drive.appdata` để lưu backup trong vùng dữ liệu riêng `appDataFolder`; ứng dụng không xin quyền đọc tệp hoặc metadata trên toàn Drive. Bật Google Drive API và thêm scope này vào OAuth consent screen. Thanh quota tổng Drive không được hiển thị do cần quyền metadata rộng hơn. Nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console. Token chỉ được giữ trong bộ nhớ ứng dụng khi đồng bộ.
 
 Firebase Auth là hộ chiếu Google cho danh bạ và chat. Đăng ký/đăng nhập bằng ID cá nhân vẫn hoạt động ngoại tuyến nhưng hồ sơ chỉ nằm trên thiết bị; hồ sơ này không cấp quyền Firebase và không được đồng bộ qua máy chủ.
 
 ## Dữ liệu ngoại tuyến
 
-Q-Dcom lưu sản phẩm, từ vựng bot và thành viên trong IndexedDB qua Dexie (`QDcom_Offline_DB`). Lần mở đầu tạo dữ liệu từ `data/mockProducts.ts`; dữ liệu sản phẩm/từ vựng localStorage cũ được nhập khi tạo cơ sở dữ liệu. Google Drive nhận bản backup JSON/Gzip tự động trong vùng `appDataFolder`; Cài đặt hiển thị dung lượng Drive và cho tải file JSON về máy. Service worker cache app shell và tài nguyên cùng origin sau lần tải trực tuyến đầu tiên. Camera và Google OAuth cần HTTPS hoặc localhost; IndexedDB và các màn kho/bot/báo cáo vẫn dùng offline.
+Q-Dcom lưu sản phẩm, từ vựng bot và thành viên trong IndexedDB qua Dexie (`QDcom_Offline_DB`). Lần mở đầu tạo dữ liệu từ `data/mockProducts.ts`; dữ liệu sản phẩm/từ vựng localStorage cũ được nhập khi tạo cơ sở dữ liệu. Google Drive nhận bản backup JSON/Gzip tự động trong vùng `appDataFolder`; Cài đặt hiển thị trạng thái sao lưu và cho tải file JSON về máy. Không đọc quota tổng Drive vì thao tác đó đòi hỏi scope metadata rộng hơn. Service worker cache app shell và tài nguyên cùng origin sau lần tải trực tuyến đầu tiên. Camera và Google OAuth cần HTTPS hoặc localhost; IndexedDB và các màn kho/bot/báo cáo vẫn dùng offline.
 
-Firestore chỉ chứa hồ sơ công khai tối thiểu (mã thành viên, họ tên), nhóm/phòng chat, yêu cầu tham gia và tin nhắn. Kho hàng và lịch sử nghiệp vụ không được ghi lên Firestore. Tin nhắn `@q` lưu câu hỏi; mỗi thiết bị tự truy vấn IndexedDB và dựng thẻ kết quả cục bộ, không phát tán số lượng/vị trí hàng qua máy chủ. Xem [firestore.rules](firestore.rules) và `lib/services/gatekeeperService.ts` để biết giới hạn truy cập.
+Firestore chứa hồ sơ công khai tối thiểu, nhóm/phòng chat và tin nhắn; ngoài ra workspace sản xuất dùng `productionGroups/{groupId}` để đồng bộ thành viên, danh mục, đơn giá và lượt sản lượng với cách ly theo nhóm. Quy tắc kiểm tra vai trò, quyền đọc entry cá nhân và phép tính tiền tại [firestore.rules](firestore.rules); service workspace nằm trong `lib/services/productionService.ts`. Kho hàng, tồn kho, vị trí và kết quả tra cứu `@q` vẫn ở IndexedDB; câu hỏi `@q` không gửi kèm bản ghi sản phẩm lên máy chủ.
 
 Trong Cài đặt, nhập từ/cụm từ mới, chọn ý định số lượng/vị trí/chào hỏi rồi nhấn **Thêm từ**. Câu chào và câu trả lời khi không tìm thấy cũng được lưu trong bảng `botVocabulary`.
 
@@ -58,13 +60,23 @@ app/                         App Router, layout và route trang chính
 components/
   products/                  ProductCard, ProductImage và trạng thái dùng lại
   search/                    SearchBar dùng lại
+  community-chat.tsx         Giao diện chat Firebase, QR và @q cục bộ
+  layout/                    Sidebar nhóm tính năng và hiệu ứng chuyển trang
+  production/                Workspace sản lượng, nhập liệu, duyệt, ví và nhắc nộp
   background-video.tsx       Lớp nền video
   qdcom-app.tsx               Điều phối dashboard, các tab và menu Sidebar
 data/mockProducts.ts          Dữ liệu local khởi tạo
 lib/bot/                      Từ điển và parser @q
 lib/db/                       Dexie IndexedDB: products, botVocabulary, members
 lib/services/productService.ts Product service Dexie
+lib/services/gatekeeperService.ts Firestore profiles, groups, join requests, chats
+lib/services/productionService.ts Firestore workspace, danh mục, giá và sản lượng
 lib/sync/                     Schema QR và backup JSON
+  googleDriveBackup.ts       Backup Gzip riêng trong Google Drive appDataFolder
+lib/firebase.ts              Firebase Auth, Firestore và Google OAuth provider
+firestore.rules              Quyền truy cập Firestore theo người dùng/nhóm/chat
+firebase.json                Ánh xạ rules cho Firebase CLI
+SO_DO_CAU_TRUC_TONG_QUAT.md  Kiến trúc, lịch sử và hướng dẫn bàn giao agent
 public/manifest.json          PWA manifest
 public/sw.js                  Offline app-shell cache
 public/videos/                Video riêng cho đăng nhập và ứng dụng

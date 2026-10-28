@@ -92,7 +92,13 @@ export function watchGroups(
 }
 
 export async function requestToJoinGroup(groupId: string, uid: string): Promise<void> {
-  await setDoc(doc(db(), "groups", groupId, "joinRequests", uid), {
+  const requestRef = doc(db(), "groups", groupId, "joinRequests", uid);
+  const existingRequest = await getDoc(requestRef);
+  if (existingRequest.exists() && existingRequest.data().status === "pending") return;
+  if (existingRequest.exists() && existingRequest.data().status !== "rejected") {
+    throw new Error("Yêu cầu tham gia trước đó đã được duyệt hoặc có trạng thái không hợp lệ.");
+  }
+  await setDoc(requestRef, {
     userId: uid,
     status: "pending",
     requestedAt: serverTimestamp(),

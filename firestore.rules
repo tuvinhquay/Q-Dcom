@@ -23,6 +23,149 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(userId));
     }
 
+    function isProductionMember(groupId) {
+      return isRealUser()
+        && exists(/databases/$(database)/documents/productionGroups/$(groupId))
+        && request.auth.uid in get(/databases/$(database)/documents/productionGroups/$(groupId)).data.memberIds;
+    }
+
+    function ownsProductionGroup(groupId) {
+      return isRealUser()
+        && exists(/databases/$(database)/documents/productionGroups/$(groupId))
+        && get(/databases/$(database)/documents/productionGroups/$(groupId)).data.ownerId == request.auth.uid;
+    }
+
+    function managesProductionGroup(groupId) {
+      return isRealUser()
+        && exists(/databases/$(database)/documents/productionGroups/$(groupId))
+        && (
+          get(/databases/$(database)/documents/productionGroups/$(groupId)).data.ownerId == request.auth.uid
+          || request.auth.uid in get(/databases/$(database)/documents/productionGroups/$(groupId)).data.managerIds
+        );
+    }
+
+    function validProductionGroup(data, ownerId) {
+      return data.keys().hasAll(['name', 'ownerId', 'memberIds', 'managerIds', 'approvalRequired', 'createdAt'])
+        && data.keys().hasOnly([
+          'name', 'ownerId', 'memberIds', 'managerIds', 'approvalRequired', 'createdAt',
+          'exchangeRateVndPerUsd', 'goldPriceVndPerChi', 'goldType'
+        ])
+        && data.ownerId == ownerId
+        && data.memberIds is list
+        && data.memberIds.size() >= 1
+        && data.memberIds.size() <= 200
+        && data.memberIds.toSet().size() == data.memberIds.size()
+        && ownerId in data.memberIds
+        && data.managerIds is list
+        && data.managerIds.size() <= 199
+        && data.managerIds.toSet().size() == data.managerIds.size()
+        && data.memberIds.hasAll(data.managerIds)
+        && data.approvalRequired is bool
+        && (
+          !data.keys().hasAny(['exchangeRateVndPerUsd', 'goldPriceVndPerChi', 'goldType'])
+          || (
+            data.keys().hasAll(['exchangeRateVndPerUsd', 'goldPriceVndPerChi', 'goldType'])
+            && data.exchangeRateVndPerUsd is int
+            && data.exchangeRateVndPerUsd > 0
+            && data.exchangeRateVndPerUsd <= 1000000
+            && data.goldPriceVndPerChi is int
+            && data.goldPriceVndPerChi > 0
+            && data.goldPriceVndPerChi <= 10000000000
+            && data.goldType in ['SJC', 'Vàng nhẫn']
+          )
+        )
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 100;
+    }
+
+    function validProductionOrder(groupId, data) {
+      return data.keys().hasAll(['groupId', 'code', 'po', 'color', 'productName', 'active'])
+        && data.keys().hasOnly(['groupId', 'code', 'po', 'color', 'productName', 'active'])
+        && data.groupId == groupId
+        && data.code is string
+        && data.code.size() > 0
+        && data.code.size() <= 100
+        && data.po is string
+        && data.po.size() > 0
+        && data.po.size() <= 100
+        && data.color is string
+        && data.color.size() > 0
+        && data.color.size() <= 80
+        && data.productName is string
+        && data.productName.size() > 0
+        && data.productName.size() <= 160
+        && data.active is bool;
+    }
+
+    function validProductionEntry(groupId, expectedCreatedAt) {
+      let entry = request.resource.data;
+      let stagePath = /databases/$(database)/documents/productionGroups/$(groupId)/stages/$(entry.stageId);
+      let orderPath = /databases/$(database)/documents/productionGroups/$(groupId)/orders/$(entry.orderId);
+      let groupPath = /databases/$(database)/documents/productionGroups/$(groupId);
+      return entry.keys().hasAll([
+          'groupId', 'workerId', 'workerName', 'orderId', 'orderCode', 'po', 'color',
+          'stageId', 'stageName', 'line', 'date', 'quantity', 'unitPriceVnd',
+          'amountVnd', 'customValues', 'status', 'reviewNote', 'reviewedBy',
+          'reviewedAt', 'createdAt'
+        ])
+        && entry.keys().hasOnly([
+          'groupId', 'workerId', 'workerName', 'orderId', 'orderCode', 'po', 'color',
+          'stageId', 'stageName', 'line', 'date', 'quantity', 'unitPriceVnd',
+          'amountVnd', 'customValues', 'status', 'reviewNote', 'reviewedBy',
+          'reviewedAt', 'createdAt'
+        ])
+        && entry.groupId == groupId
+        && entry.workerId == request.auth.uid
+        && entry.workerName is string
+        && entry.workerName.size() > 0
+        && entry.workerName.size() <= 120
+        && entry.orderId is string
+        && entry.stageId is string
+        && exists(stagePath)
+        && exists(orderPath)
+        && get(stagePath).data.groupId == groupId
+        && get(stagePath).data.orderId == entry.orderId
+        && get(stagePath).data.name == entry.stageName
+        && get(stagePath).data.line == entry.line
+        && get(stagePath).data.active == true
+        && get(orderPath).data.groupId == groupId
+        && get(orderPath).data.active == true
+        && get(orderPath).data.code == entry.orderCode
+        && get(orderPath).data.po == entry.po
+        && get(orderPath).data.color == entry.color
+        && entry.unitPriceVnd == get(stagePath).data.unitPriceVnd
+        && entry.quantity is int
+        && entry.quantity > 0
+        && entry.quantity <= 1000000
+        && entry.unitPriceVnd is int
+        && entry.unitPriceVnd >= 0
+        && entry.unitPriceVnd <= 1000000000
+        && entry.amountVnd is int
+        && entry.amountVnd == entry.quantity * entry.unitPriceVnd
+        && entry.customValues is map
+        && entry.customValues.size() <= 50
+        && entry.date is string
+        && entry.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && entry.reviewNote is string
+        && entry.reviewNote.size() <= 500
+        && entry.createdAt == expectedCreatedAt
+        && (
+          (
+            get(groupPath).data.approvalRequired == true
+            && entry.status == 'pending'
+            && entry.reviewedBy == ''
+            && entry.reviewedAt == null
+          )
+          || (
+            get(groupPath).data.approvalRequired == false
+            && entry.status == 'approved'
+            && entry.reviewedBy == request.auth.uid
+            && entry.reviewedAt == request.time
+          )
+        );
+    }
+
     function validPublicProfile() {
       return request.resource.data.keys().hasAll(['memberId', 'fullName'])
         && request.resource.data.keys().hasOnly(['memberId', 'fullName'])
@@ -88,18 +231,33 @@ service cloud.firestore {
           && request.resource.data.status == 'pending'
           && request.resource.data.requestedAt == request.time;
 
-        allow update: if ownsGroup(groupId)
-          && request.resource.data.keys().hasAll(['userId', 'status', 'requestedAt'])
-          && request.resource.data.keys().hasOnly(['userId', 'status', 'requestedAt'])
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.status in ['approved', 'rejected']
-          && request.resource.data.requestedAt == resource.data.requestedAt
-          && (
-            request.resource.data.status == 'rejected'
-            || (
-              request.resource.data.userId in getAfter(/databases/$(database)/documents/groups/$(groupId)).data.memberIds
-              && request.resource.data.userId in getAfter(/databases/$(database)/documents/chats/$(groupId)).data.participantIds
+        allow update: if (
+            ownsGroup(groupId)
+            && request.resource.data.keys().hasAll(['userId', 'status', 'requestedAt'])
+            && request.resource.data.keys().hasOnly(['userId', 'status', 'requestedAt'])
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.status in ['approved', 'rejected']
+            && request.resource.data.requestedAt == resource.data.requestedAt
+            && (
+              request.resource.data.status == 'rejected'
+              || (
+                request.resource.data.userId in getAfter(/databases/$(database)/documents/groups/$(groupId)).data.memberIds
+                && request.resource.data.userId in getAfter(/databases/$(database)/documents/chats/$(groupId)).data.participantIds
+              )
             )
+          )
+          || (
+            isRealUser()
+            && request.auth.uid == userId
+            && resource.data.userId == userId
+            && resource.data.status == 'rejected'
+            && exists(/databases/$(database)/documents/groups/$(groupId))
+            && !(request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds)
+            && request.resource.data.keys().hasAll(['userId', 'status', 'requestedAt'])
+            && request.resource.data.keys().hasOnly(['userId', 'status', 'requestedAt'])
+            && request.resource.data.userId == userId
+            && request.resource.data.status == 'pending'
+            && request.resource.data.requestedAt == request.time
           );
 
         allow delete: if isRealUser()
@@ -108,7 +266,8 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
-      allow read: if isChatParticipant(chatId);
+      allow read: if isRealUser()
+        && request.auth.uid in resource.data.participantIds;
 
       allow create: if isRealUser()
         && request.resource.data.keys().hasAll(['chatType', 'participantIds', 'createdAt'])
@@ -167,6 +326,158 @@ service cloud.firestore {
           && request.resource.data.createdAt == request.time;
 
         allow update, delete: if false;
+      }
+    }
+
+    match /productionGroups/{groupId} {
+      allow get, list: if isRealUser() && request.auth.uid in resource.data.memberIds;
+
+      allow create: if isRealUser()
+        && validProductionGroup(request.resource.data, request.auth.uid)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.memberIds.size() == 1
+        && request.resource.data.managerIds.size() == 0;
+
+      allow update: if (
+          ownsProductionGroup(groupId)
+          && validProductionGroup(request.resource.data, resource.data.ownerId)
+          && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.createdAt == resource.data.createdAt
+        )
+        || (
+          managesProductionGroup(groupId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'approvalRequired'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100
+          && request.resource.data.approvalRequired is bool
+        );
+
+      allow delete: if false;
+
+      match /joinRequests/{userId} {
+        allow get, list: if isRealUser()
+          && (request.auth.uid == userId || ownsProductionGroup(groupId));
+
+        allow create: if isRealUser()
+          && request.auth.uid == userId
+          && exists(/databases/$(database)/documents/productionGroups/$(groupId))
+          && !(request.auth.uid in get(/databases/$(database)/documents/productionGroups/$(groupId)).data.memberIds)
+          && request.resource.data.keys().hasAll(['userId', 'displayName', 'status', 'requestedAt'])
+          && request.resource.data.keys().hasOnly(['userId', 'displayName', 'status', 'requestedAt'])
+          && request.resource.data.userId == userId
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 120
+          && request.resource.data.status == 'pending'
+          && request.resource.data.requestedAt == request.time;
+
+        allow update: if (
+            ownsProductionGroup(groupId)
+            && resource.data.status == 'pending'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+            && request.resource.data.status in ['approved', 'rejected']
+            && (
+              request.resource.data.status == 'rejected'
+              || request.resource.data.userId in getAfter(/databases/$(database)/documents/productionGroups/$(groupId)).data.memberIds
+            )
+          )
+          || (
+            isRealUser()
+            && request.auth.uid == userId
+            && resource.data.userId == userId
+            && resource.data.status == 'rejected'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'requestedAt', 'displayName'])
+            && request.resource.data.status == 'pending'
+            && request.resource.data.requestedAt == request.time
+            && request.resource.data.displayName is string
+            && request.resource.data.displayName.size() > 0
+            && request.resource.data.displayName.size() <= 120
+          );
+
+        allow delete: if false;
+      }
+
+      match /orders/{orderId} {
+        allow read: if isProductionMember(groupId);
+        allow create: if managesProductionGroup(groupId)
+          && validProductionOrder(groupId, request.resource.data);
+        allow update: if managesProductionGroup(groupId)
+          && validProductionOrder(groupId, request.resource.data);
+        allow delete: if managesProductionGroup(groupId);
+      }
+
+      match /stages/{stageId} {
+        allow read: if isProductionMember(groupId);
+        allow create, update: if managesProductionGroup(groupId)
+          && request.resource.data.keys().hasAll(['groupId', 'orderId', 'name', 'line', 'unitPriceVnd', 'active'])
+          && request.resource.data.keys().hasOnly(['groupId', 'orderId', 'name', 'line', 'unitPriceVnd', 'active'])
+          && request.resource.data.groupId == groupId
+          && request.resource.data.orderId is string
+          && exists(/databases/$(database)/documents/productionGroups/$(groupId)/orders/$(request.resource.data.orderId))
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100
+          && request.resource.data.line is string
+          && request.resource.data.line.size() > 0
+          && request.resource.data.line.size() <= 100
+          && request.resource.data.unitPriceVnd is int
+          && request.resource.data.unitPriceVnd >= 0
+          && request.resource.data.unitPriceVnd <= 1000000000
+          && request.resource.data.active is bool;
+        allow delete: if managesProductionGroup(groupId);
+      }
+
+      match /customFields/{fieldId} {
+        allow read: if isProductionMember(groupId);
+        allow create, update: if managesProductionGroup(groupId)
+          && request.resource.data.keys().hasAll(['groupId', 'label', 'type', 'unit', 'required'])
+          && request.resource.data.keys().hasOnly(['groupId', 'label', 'type', 'unit', 'required'])
+          && request.resource.data.groupId == groupId
+          && request.resource.data.label is string
+          && request.resource.data.label.size() > 0
+          && request.resource.data.label.size() <= 100
+          && request.resource.data.type in ['text', 'number', 'date']
+          && request.resource.data.unit is string
+          && request.resource.data.unit.size() <= 40
+          && request.resource.data.required is bool;
+        allow delete: if managesProductionGroup(groupId);
+      }
+
+      match /entries/{entryId} {
+        allow read: if isProductionMember(groupId)
+          && (managesProductionGroup(groupId) || resource.data.workerId == request.auth.uid);
+
+        allow create: if isProductionMember(groupId) && validProductionEntry(groupId, request.time);
+
+        allow update: if (
+            managesProductionGroup(groupId)
+            && resource.data.status == 'pending'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedBy', 'reviewedAt'])
+            && request.resource.data.status in ['approved', 'revision_requested']
+            && request.resource.data.reviewNote is string
+            && request.resource.data.reviewNote.size() <= 500
+            && request.resource.data.reviewedBy == request.auth.uid
+            && request.resource.data.reviewedAt == request.time
+          )
+          || (
+            isProductionMember(groupId)
+            && resource.data.workerId == request.auth.uid
+            && resource.data.status == 'revision_requested'
+            && validProductionEntry(groupId, resource.data.createdAt)
+            && (
+              (
+                get(/databases/$(database)/documents/productionGroups/$(groupId)).data.approvalRequired == true
+                && request.resource.data.status == 'pending'
+              )
+              || (
+                get(/databases/$(database)/documents/productionGroups/$(groupId)).data.approvalRequired == false
+                && request.resource.data.status == 'approved'
+              )
+            )
+          );
+
+        allow delete: if false;
       }
     }
 

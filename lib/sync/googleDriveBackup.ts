@@ -2,11 +2,6 @@ const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_FILES_API = `${DRIVE_API}/files`;
 const BACKUP_NAME = "Q-Dcom_Backup.json.gz";
 
-export interface GoogleDriveStorageQuota {
-  usedBytes: number;
-  totalBytes: number | null;
-}
-
 async function checkedFetch(url: string, init: RequestInit): Promise<Response> {
   const response = await fetch(url, init);
   if (!response.ok) {
@@ -71,20 +66,4 @@ export async function syncBackupToGoogleDrive(accessToken: string, contents: str
     headers: { "Content-Type": "application/gzip" },
     body: compressed,
   });
-}
-
-export async function getGoogleDriveStorageQuota(accessToken: string): Promise<GoogleDriveStorageQuota> {
-  const query = new URLSearchParams({ fields: "storageQuota(limit,usage,usageInDrive)" });
-  const response = await checkedFetch(`${DRIVE_API}/about?${query}`, { headers: authorization(accessToken) });
-  const result = await response.json() as {
-    storageQuota?: { limit?: string; usage?: string; usageInDrive?: string };
-  };
-  const quota = result.storageQuota;
-  if (!quota) throw new Error("Google Drive không trả về thông tin dung lượng.");
-  const usedBytes = Number(quota.usageInDrive ?? quota.usage);
-  const totalBytes = quota.limit === undefined ? null : Number(quota.limit);
-  if (!Number.isFinite(usedBytes) || (totalBytes !== null && (!Number.isFinite(totalBytes) || totalBytes <= 0))) {
-    throw new Error("Google Drive trả về thông tin dung lượng không hợp lệ.");
-  }
-  return { usedBytes, totalBytes };
 }

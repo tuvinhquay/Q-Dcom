@@ -48,7 +48,6 @@ export function getFirebaseFirestore(): Firestore {
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("https://www.googleapis.com/auth/drive.appdata");
-googleProvider.addScope("https://www.googleapis.com/auth/drive.metadata.readonly");
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
 export interface GoogleAuthSession {

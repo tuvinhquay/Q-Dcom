@@ -20,21 +20,21 @@ const policySections = [
     title: "Thu thập thông tin",
     icon: Cloud,
     content:
-      "Firebase Auth xác thực tài khoản Google. Firestore chỉ lưu mã thành viên, họ tên công khai, nhóm/phòng chat, yêu cầu tham gia và nội dung tin nhắn; anonymous login không được chấp nhận.",
+      "Firebase Auth xác thực tài khoản Google. Firestore lưu mã thành viên và họ tên công khai, nhóm/phòng chat, cùng dữ liệu workspace sản xuất (thành viên, đơn hàng, công đoạn, đơn giá và sản lượng) trong phạm vi nhóm được cấp quyền; anonymous login không được chấp nhận.",
   },
   {
     number: "02",
     title: "Sử dụng dữ liệu",
     icon: Boxes,
     content:
-      "Kho hàng, từ vựng @q và dữ liệu nghiệp vụ được lưu trong IndexedDB trên thiết bị. Bản sao JSON/Gzip có thể được đồng bộ vào appDataFolder riêng trên Google Drive; chat được chia sẻ với các thành viên phòng.",
+      "Kho hàng, tồn kho, vị trí, từ vựng @q và kết quả tra cứu được lưu trong IndexedDB trên thiết bị. Dữ liệu sản lượng/thu nhập được đồng bộ trong workspace Firestore riêng theo groupId để các thành viên được duyệt cùng sử dụng; backup JSON/Gzip trên Google Drive dùng appDataFolder và quyền drive.appdata. Chat được chia sẻ với thành viên phòng.",
   },
   {
     number: "03",
     title: "An toàn bảo mật",
     icon: LockKeyhole,
     content:
-      "Quy tắc Firestore chỉ cấp quyền đọc/gửi tin nhắn cho thành viên phòng và giới hạn cập nhật nhóm cho trưởng nhóm. Kết quả @q được dựng cục bộ; dữ liệu sản phẩm không gửi lên Firestore.",
+      "Quy tắc Firestore cô lập workspace sản xuất theo groupId: công nhân chỉ đọc lượt của mình, quản lý được cấu hình và duyệt trong nhóm, còn chủ nhóm quản lý thành viên/vai trò. Kết quả @q được dựng cục bộ; dữ liệu sản phẩm và tồn kho không gửi lên Firestore.",
   },
 ];
 
