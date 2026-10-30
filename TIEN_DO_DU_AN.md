@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-31 · rà soát sâu Google OAuth, Membership state và ranh giới Google Drive  
+> **Cập nhật gần nhất:** 2026-10-31 · siết quyền cấp Membership Admin và bổ sung kiểm thử Rules  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -26,7 +26,7 @@
 | Kiểm tra Authentication & Authorization — Phase 2 | 🟢 | Đã rà soát tĩnh các luồng và tệp chính; chưa phải kiểm toán bảo mật toàn diện hoặc kiểm thử runtime |
 | Lập kế hoạch triển khai theo từng nhóm | 🟡 | Đã tạo thiết kế nền tảng Authentication/Membership; tiếp tục chi tiết hóa và triển khai từng bước |
 | Sửa mã nguồn / triển khai thực tế | 🟡 | Đã thêm Gateway, tích hợp Dashboard xưởng, khóa Bot/Cộng đồng tenant khi chưa xác minh; tiếp tục hoàn thiện Google/Membership và session |
-| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI Validate của commit source `8e895e8` và commit docs `436c957` đều PASS; chưa có kiểm tra Firebase thật/Termux |
+| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI của commit bảo mật `b397150` đang chạy; CI PASS trước đó không thay thế kiểm tra mới. Chưa có kiểm tra Firebase thật/Termux |
 
    > **Vị trí đang làm:** B2/B6 — rà soát và hoàn thiện trạng thái Google identity ↔ Membership; Google OAuth hiện vẫn lưu hồ sơ và điều hướng kho local, còn quyền tenant phải tiếp tục được xác minh độc lập qua Gateway. Chưa triển khai B3/B4.
 
@@ -38,7 +38,7 @@
 - [x] 🟢 A2. Xác định các chức năng cũ bắt buộc phải giữ.
 - [x] 🟢 A3. Rà soát yêu cầu Phase 1.
 - [x] 🟢 A4. Rà soát tĩnh Authentication & Authorization trong Phase 2.
-- [x] 🟢 A5. Kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa. (HEAD `760f93d`; PR #2 vẫn Draft; workflow Validate mới nhất PASS toàn bộ 11 bước.)
+- [x] 🟢 A5. Kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa. (PR #2 head `b397150`; PR vẫn Draft; workflow Validate trên head mới đang chạy.)
 - [ ] 🟡 A6. Đã có `AUTHENTICATION_ARCHITECTURE.md`; tiếp tục cập nhật danh sách file/rủi ro/rollback theo các phát hiện triển khai thực tế.
 - [ ] 🟡 A7. CI Validate đã PASS trên source commit `8e895e8` và docs commit `436c957`; còn thiếu smoke test thiết bị và regression thực tế các chức năng cũ.
 
@@ -51,8 +51,8 @@
 - [ ] ⚪ B5. Hợp nhất Membership và Tenant context; role lấy từ dữ liệu có thẩm quyền phía máy chủ.
 - [ ] 🟡 B6. App shell đã có trạng thái local_only / loading / authorized / denied; bỏ fallback Worker cho tenant và khóa Bot/Cộng đồng tenant khi chưa xác minh. CI PASS; cần rà soát toàn bộ điểm dùng role và kiểm thử runtime.
 - [ ] ⚪ B7. Chuẩn hóa đăng xuất, thu hồi thành viên, vô hiệu hóa tài khoản và xử lý phiên hết hạn.
-- [ ] ⚪ B8. Kiểm tra quyền tại UI, backend/Cloud Functions và Firestore Rules; UI ẩn mục không thay thế bảo mật.
-- [ ] ⚪ B9. Kiểm thử tự động: Google, thẻ nhân viên, Admin, Worker, thành viên bị khóa, tenant khác.
+- [ ] 🟡 B8. Rà soát và siết quyền Firestore Rules; đã bổ sung giới hạn tạo/nâng role Admin, còn chờ Emulator xác nhận và rà soát các thao tác khác.
+- [ ] 🟡 B9. Bổ sung kiểm thử Rules cho cấp/nâng Admin, bootstrap tenant mới, Worker và tenant khác; còn chờ CI/Emulator hoàn tất.
 - [ ] ⚪ B10. Technical PASS — lint, typecheck, build, test, rules/emulator và regression liên quan.
 - [ ] 🔵 B11. Chờ người dùng kiểm tra thực tế bằng tài khoản Admin và Worker.
 - [ ] ⚪ B12. Chỉ đóng nhóm khi Technical PASS và Practical PASS.
@@ -243,3 +243,15 @@ Sau mỗi phiên làm việc:
 - Chưa sửa Rules hoặc source, chưa chạy Emulator trong phiên này. Đây là phát hiện rà soát tĩnh, chưa kết luận khai thác được cho đến khi có test Rules tái hiện.
 - B2/B6 tiếp tục 🟡; không đánh dấu PASS. B3/B4 vẫn ⚪. Không deploy production, không merge PR #2, không sửa `main`.
 - Vị trí tiếp theo: viết/điều chỉnh bộ test Firestore Rules cho các ca tạo Worker, Admin, tự nâng quyền, tenant cũ/tenant mới; sau khi có test bảo vệ mới sửa Rules và chạy CI/Emulator.
+
+
+### 2026-10-31 — Siết quyền cấp Membership Admin và bổ sung kiểm thử
+- Đọc lại `TIEN_DO_DU_AN.md` và `SESSION_LOG.md` trước khi tiếp tục; xác minh đúng nhánh `feature/new-feature-foundation-2026-10-27` và PR #2.
+- Xác minh PR #2 head trước khi sửa là `eb6f52330d3500b93e514857c2a5d01ac195bd4b`; bảng tiến độ trước đó ghi HEAD cũ nên đã đồng bộ theo head mới.
+- Đọc `firestore.rules` và `tests/security/rules.test.mjs`. Bộ test hiện có đã chạy qua Firebase Emulator trong workflow CI; bổ sung các ca Admin tạo Worker, Admin tạo Admin bị từ chối, Admin không phải owner không thể nâng Worker thành Admin, không tự tạo Membership Admin trên tenant đã tồn tại, và bootstrap owner + tenant trong cùng batch.
+- Sửa `firestore.rules`: Admin thông thường chỉ tạo Membership role `worker`; bootstrap Admin yêu cầu tenant chưa tồn tại trước giao dịch và tồn tại sau giao dịch với ownerUid khớp caller; cập nhật role thành `admin` chỉ được phép khi caller là ownerUid.
+- Cập nhật `tests/security/rules.test.mjs` với các ca bảo mật mới.
+- Commit test: `5014a05eb7260f64c80861c465cb8a4f0f249ed3`; commit Rules: `b397150ac59145272db9e87e33a277e271034e49`.
+- GitHub Actions Validate run `41147559429` trên đúng HEAD `b397150` đã được tạo và tại thời điểm cập nhật còn `in_progress`. Chưa có kết quả Emulator cuối cùng, chưa đánh dấu PASS.
+- PR #2 vẫn Draft, chưa merge; không deploy Firebase production; không thay đổi `main`.
+- Vị trí tiếp theo: đợi workflow Validate/Firestore Emulator; nếu PASS, tiếp tục kiểm tra các nhánh cập nhật Membership và bootstrap; nếu FAIL, sửa theo log rồi chạy lại. Sau khi Rules ổn định mới tiếp tục Membership state machine và employee PIN/Custom Token.
