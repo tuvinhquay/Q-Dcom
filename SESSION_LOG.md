@@ -272,3 +272,21 @@
 
 ### Vị trí tiếp theo
 - Hoàn tất thiết kế Authentication Gateway, mô hình thông tin xác thực nhân viên và luồng cấp Firebase Custom Token; sau đó mới triển khai từng phần cùng kiểm thử Emulator.
+
+
+## Phiên 2026-10-30 · Hoàn tất thiết kế Authentication Gateway
+
+### Đã thực hiện
+- Tạo `AUTHENTICATION_ARCHITECTURE.md` trên nhánh `feature/new-feature-foundation-2026-10-27`.
+- Chốt kiến trúc một Firebase Auth session và một Membership/Authorization pipeline cho Google OAuth và employee card + PIN.
+- Đặc tả trạng thái `signed_out`, `authenticating`, `loading_memberships`, `tenant_selection`, `authorized`, `no_membership`, `membership_disabled`, `error`; không fallback role Worker khi chưa xác định được quyền.
+- Đặc tả callable function xác minh thẻ + PIN, phát hành Firebase Custom Token, rate limit/lockout và credential chỉ server đọc.
+- Ghi danh sách file dự kiến, bộ test bảo mật và tiêu chí hoàn thành nhóm B.
+
+### Kiểm tra và giới hạn
+- Tài liệu kiến trúc đã được tạo và xác minh qua GitHub.
+- Cập nhật `TIEN_DO_DU_AN.md`: B1 🟢; B2 là bước kế tiếp.
+- Chưa thay đổi source code, chưa chạy test mới, chưa deploy Firebase, chưa merge PR.
+
+### Vị trí bàn giao
+- Bắt đầu B2: triển khai Google OAuth dùng Membership Gateway và trạng thái UI thống nhất; sau đó mới triển khai credential thẻ nhân viên và Custom Token.
