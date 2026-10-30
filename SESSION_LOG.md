@@ -362,3 +362,13 @@
 ### Vị trí tiếp theo
 - Xác nhận kết quả CI cho commit mới.
 - Rà soát hoàn chỉnh Google OAuth flow, xử lý no-membership/tenant selection và đồng bộ auth state khi đăng xuất/hết hạn phiên.
+
+
+## Phiên 2026-10-30 · Xử lý lỗi lint trong Membership state
+
+- CI commit `a4c87bec` báo lỗi ESLint `react-hooks/set-state-in-effect` tại effect đồng bộ tenant.
+- Đã sửa bằng cách lưu kết quả xác minh có gắn `tenantId` và `uid`; loading được suy ra khi kết quả chưa khớp context hiện tại, không gọi setState đồng bộ trong effect.
+- Commit sửa: `8e895e865a593568c5d05787e8141f4f9175e0d5`.
+- Workflow Validate trên commit sửa được kích hoạt và đang chạy tại thời điểm ghi nhận.
+- Các lần CI trước đó thất bại chỉ tại bước lint; TypeScript/build/rules chưa chạy do workflow dừng sớm. Không được suy diễn là đã PASS.
+- Chưa chạy Termux/Firebase thật; không deploy/merge.
