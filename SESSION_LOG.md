@@ -226,3 +226,26 @@
 - Trước khi sử dụng production: cấu hình Firebase project, bật Google Authentication, deploy rules/indexes/functions; Cloud Functions có thể yêu cầu gói billing phù hợp.
 - Chat cộng đồng cũ vẫn được giữ để không phá luồng trước đây; người dùng tenant mới được hướng sang chat xưởng có tenant. Nếu muốn mọi nhóm/chat cũ cũng có tenant bắt buộc, cần lập kế hoạch migration riêng thay vì sửa trực tiếp để tránh khóa người dùng khỏi nhóm hiện có.
 - Chưa merge PR #2 vào `main`; PR đang để Draft để tránh đưa tính năng chưa deploy Firebase production vào luồng chính.
+
+
+## Phiên 2026-10-30 · Tạo bảng theo dõi tiến độ dự án
+
+### Mục tiêu
+- Tạo một tệp tiến độ độc lập với `SESSION_LOG.md` để nhìn nhanh các bước đã hoàn thành, đang chuẩn bị/đang làm, chưa bắt đầu, bị chặn và chờ người dùng kiểm tra.
+- Theo dõi trình tự triển khai các nhóm Authentication, Membership, Authorization, Production, Worker Wallet, Google Integration, Mobile UI, regression chức năng cũ và phát hành.
+
+### Đã thực hiện
+- Tạo `TIEN_DO_DU_AN.md` trên nhánh `feature/new-feature-foundation-2026-10-27`.
+- Quy ước trạng thái: 🟢 hoàn thành; 🟡 đang chuẩn bị/đang làm; ⚪ chưa bắt đầu; 🔴 bị chặn; 🔵 chờ người dùng kiểm tra.
+- Ghi nhận Phase 1 và Phase 2 đã hoàn thành ở mức khảo sát yêu cầu/rà soát tĩnh; không đánh đồng với triển khai code hoặc kiểm toán bảo mật toàn diện.
+- Đánh dấu vị trí tiếp theo là A5: kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa mã nguồn.
+- Đưa các chức năng phải bảo toàn vào danh sách regression riêng: kho sản phẩm, Dexie IndexedDB, Google OAuth, đăng nhập thẻ nhân viên, Google Drive Backup, QR, Chat và @Q Bot.
+
+### Kiểm tra và giới hạn
+- Tệp mới đã được tạo thành công qua GitHub Contents API; commit: `7cf3d96fec95dbac93107b41815824df428690d0`.
+- Chỉ thêm tài liệu; không sửa mã nguồn ứng dụng, không deploy Firebase, không merge PR.
+- Các trạng thái 🟢 hiện tại chỉ áp dụng cho công việc khảo sát/định nghĩa đã thực hiện; các nhóm triển khai kỹ thuật vẫn chưa bắt đầu.
+
+### Vị trí bàn giao
+- Mở `TIEN_DO_DU_AN.md` để xem và cập nhật trạng thái công việc.
+- Tiếp tục A5 rồi lập kế hoạch chi tiết nhóm B — Authentication + Membership + Authorization.
