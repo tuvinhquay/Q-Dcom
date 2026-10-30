@@ -318,3 +318,26 @@
 - Hoàn tất baseline CI/check cho đúng PR head và đối chiếu file/rules hiện tại.
 - Chốt thiết kế B1 và danh sách file/rủi ro/rollback.
 - Sau đó triển khai B2 — lớp Authentication/Session Gateway dùng chung, giữ nguyên Google Drive Backup và các chức năng local-first.
+
+
+## Phiên 2026-10-30 · Bắt đầu triển khai Authentication Gateway (B2)
+
+### Đã thực hiện
+- Tạo `lib/auth/authGateway.ts` làm điểm xác minh tập trung cho truy cập tenant.
+- Gateway lấy Firebase Auth user đang hoạt động trực tiếp từ `getFirebaseAuth().currentUser`, từ chối tài khoản anonymous, yêu cầu Firebase ID token và sau đó mới xác minh Membership bằng UID thật.
+- Chuyển thao tác kết nối xưởng và tạo xưởng trong `components/workshop-dashboard.tsx` sang dùng `authorizeTenantSession()`.
+- Không thay đổi Google Drive OAuth scope, logic backup, Dexie/IndexedDB, QR, chat, kho sản phẩm hoặc Firestore Rules trong lượt này.
+
+### Commit
+- `4be7e4cfedb84efcbc0739d7c076b83be24f5582` — thêm Authentication Gateway.
+- `84b22a29b327d53926f47eb81bcb02b656ac009b` — tích hợp WorkshopDashboard với Gateway.
+
+### Kiểm tra và giới hạn
+- GitHub Actions Validate được kích hoạt trên commit gateway; lần kiểm tra gần nhất còn `in_progress`, chưa có kết quả PASS cho HEAD cuối `84b22a2`.
+- Chưa chạy Termux, chưa kiểm thử tài khoản Firebase thật, chưa xác nhận quyền bằng hai tài khoản Admin/Worker.
+- Đây mới là bước đầu B2; màn hình chính vẫn còn role fallback cần xử lý, Google OAuth chưa có trạng thái Membership tập trung hoàn chỉnh, employee card + PIN/Custom Token chưa triển khai.
+- Không deploy Firebase production, không merge PR #2, không sửa `main`.
+
+### Vị trí tiếp theo
+- Kiểm tra CI đúng HEAD mới nhất.
+- Tiếp tục chuẩn hóa trạng thái quyền trong app shell và luồng Google OAuth; giữ nguyên chế độ local-first cho kho offline và backup Drive.
