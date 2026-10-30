@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-30 · xác minh CI sau sửa Membership state và rà soát tiếp luồng Google/tenant  
+> **Cập nhật gần nhất:** 2026-10-31 · rà soát sâu Google OAuth, Membership state và ranh giới Google Drive  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -28,7 +28,7 @@
 | Sửa mã nguồn / triển khai thực tế | 🟡 | Đã thêm Gateway, tích hợp Dashboard xưởng, khóa Bot/Cộng đồng tenant khi chưa xác minh; tiếp tục hoàn thiện Google/Membership và session |
 | Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI Validate của commit source `8e895e8` và commit docs `436c957` đều PASS; chưa có kiểm tra Firebase thật/Termux |
 
-  > **Vị trí đang làm:** B2/B6 — CI đã PASS cho các commit source mới nhất đã kiểm tra; tiếp tục chuẩn hóa Google sign-in/Membership state và kiểm tra mọi điểm dùng role trước khi làm B3 thẻ nhân viên.
+   > **Vị trí đang làm:** B2/B6 — rà soát và hoàn thiện trạng thái Google identity ↔ Membership; Google OAuth hiện vẫn lưu hồ sơ và điều hướng kho local, còn quyền tenant phải tiếp tục được xác minh độc lập qua Gateway. Chưa triển khai B3/B4.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -221,3 +221,15 @@ Sau mỗi phiên làm việc:
 - Cloud Functions hiện chỉ có trigger tính lại earnings; chưa có callable auth endpoint cho employee card. Không triển khai thẻ nhân viên bằng cách so sánh mã thẻ ở client.
 - Không sửa Firestore Rules, không deploy Firebase, không merge PR #2, không sửa `main`.
 - Vị trí tiếp theo: hoàn thiện B2/B6 — trạng thái Google/Membership, xử lý session/logout và rà soát quyền; sau đó thiết kế và triển khai employee card + PIN qua callable function và Firebase Custom Token.
+
+
+### 2026-10-31 — Rà soát sâu Google OAuth và ranh giới Membership
+- Xác nhận nhánh làm việc: `feature/new-feature-foundation-2026-10-27`; PR #2 vẫn mở, chưa merge. Không thay đổi `main`, không deploy Firebase production.
+- Đọc lại `lib/auth/authGateway.ts`, `lib/services/tenantService.ts`, `lib/tenancy/authorization.ts`, `components/qdcom-app.tsx`, `functions/src/index.ts`, `firestore.rules` và `package.json`.
+- Xác nhận Google OAuth trong app shell đang xác minh Google userinfo/email và Firebase provider, lưu hồ sơ người dùng, giữ Drive access token và điều hướng vào kho. Đây là đăng nhập danh tính + quyền Drive; không tự nó cấp Membership hoặc role trong tenant.
+- Xác nhận Gateway hiện xác minh Firebase Auth user không anonymous rồi đọc Membership theo UID/tenant. Membership active và role hợp lệ mới tạo TenantPrincipal. Employee code hiện chỉ là giá trị đối chiếu trong Membership, tuyệt đối chưa đủ làm thông tin đăng nhập.
+- Phát hiện cần xử lý tiếp: Gateway hiện ném lỗi tổng quát thay vì trả state machine đầy đủ `no_membership / membership_disabled / tenant_selection / error`; cần kiểm tra cách app shell hiển thị và giữ local-first khi Google account chưa thuộc tenant. Không được buộc đăng nhập kho local vào Membership.
+- Phát hiện `createTenant()` hiện ghi tenant và membership admin từ client transaction; cần rà soát chặt Firestore Rules và quy trình tạo tenant để bảo đảm chỉ chủ tenant vừa tạo được cấp Admin, không thể tự nâng quyền trên tenant đã tồn tại.
+- Cloud Functions hiện chưa có callable endpoint cho employee card + PIN/Custom Token; B3/B4 vẫn chưa triển khai.
+- Chưa sửa source code trong lượt rà soát này; chưa chạy CI mới, chưa chạy Firebase Emulator/Termux hoặc tài khoản thật. Vì vậy không đánh dấu B2/B6 PASS.
+- Vị trí tiếp theo: hoàn thiện state machine và đồng bộ auth/session ở app shell; bổ sung test cho no-membership/disabled/tenant mismatch; sau đó mới xây dựng B3/B4 với PIN hash/credential server-only, rate limit/lockout và Firebase Custom Token.
