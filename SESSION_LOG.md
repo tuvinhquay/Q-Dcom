@@ -392,3 +392,30 @@
 
 ### Vị trí tiếp theo
 - Tiếp tục B2/B6: hoàn thiện trạng thái Google/Membership và logout/session; sau đó triển khai B3/B4 bằng callable function + Firebase Custom Token, có rate limit/lockout và credential server-only.
+
+
+## Phiên 2026-10-31 · Rà soát sâu Google OAuth và Membership Gateway
+
+### Đã kiểm tra
+- Xác nhận nhánh `feature/new-feature-foundation-2026-10-27` tồn tại; PR #2 vẫn mở. Giữ nguyên quy tắc không merge, không deploy production và không sửa `main`.
+- Đọc trực tiếp các file: `lib/auth/authGateway.ts`, `lib/services/tenantService.ts`, `lib/tenancy/authorization.ts`, `components/qdcom-app.tsx`, `functions/src/index.ts`, `firestore.rules`, `package.json`.
+- Đọc chính xác handler `handleGoogleAuthorization()`: xác minh Google userinfo/email, Firebase Google provider, lưu hồ sơ local, giữ Drive access token, bật trạng thái Drive và điều hướng trang kho.
+- Đối chiếu Gateway: `authorizeTenantSession()` chỉ tạo principal sau khi có Firebase Auth user không anonymous và Membership khớp UID/tenant, đang active và có role hợp lệ.
+
+### Kết luận kỹ thuật
+- Google Sign-In, Google Drive authorization và Tenant Membership là ba trạng thái khác nhau. Handler Google hiện không trực tiếp cấp Membership; quyền tenant phải tiếp tục được xác minh riêng qua Gateway.
+- Kho local-first cần tiếp tục hoạt động với Google identity ngay cả khi tài khoản chưa có Membership; không được nhầm no-membership với lỗi đăng nhập Google hoặc làm mất quyền backup Drive.
+- Gateway hiện trả principal hoặc throw error; cần mở rộng state mapping rõ ràng cho no-membership, membership-disabled, tenant-selection và lỗi mạng/xác minh để UI không suy diễn role.
+- `createTenant()` đang tạo tenant + admin membership trong client transaction. Cần xác minh rules bảo đảm quyền tạo admin chỉ trong cùng giao dịch tạo tenant mới bởi owner UID; tuyệt đối không cho tự nâng role ở tenant đã tồn tại.
+- `functions/src/index.ts` hiện chưa có callable function xác minh employee card + PIN và phát hành Firebase Custom Token. Không được triển khai đăng nhập thẻ bằng cách tra localStorage hoặc so mã thẻ ở client.
+
+### Trạng thái và giới hạn
+- Đây là lượt rà soát mã nguồn, chưa sửa source code và chưa có commit ứng dụng mới.
+- Chưa chạy CI cho thay đổi mới, Firebase Emulator, Termux hoặc thử tài khoản Admin/Worker thật.
+- Không đánh dấu B2/B6 hoàn thành; B3/B4 chưa bắt đầu.
+- Không thay đổi Firestore Rules, không deploy production, không merge PR #2.
+
+### Vị trí tiếp theo
+- Tiếp tục B2/B6: triển khai state machine Membership rõ ràng và xử lý auth/session/logout nhất quán trong app shell; giữ Google Drive backup và kho local-first độc lập.
+- Thêm kiểm thử cho no-membership, member disabled, tenant mismatch, session hết hạn và lỗi mạng.
+- Chỉ sau khi B2/B6 có Technical PASS mới chuyển B3/B4: callable function xác minh PIN an toàn, rate limit/lockout và Firebase Custom Token.
