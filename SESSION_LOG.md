@@ -372,3 +372,23 @@
 - Workflow Validate trên commit sửa được kích hoạt và đang chạy tại thời điểm ghi nhận.
 - Các lần CI trước đó thất bại chỉ tại bước lint; TypeScript/build/rules chưa chạy do workflow dừng sớm. Không được suy diễn là đã PASS.
 - Chưa chạy Termux/Firebase thật; không deploy/merge.
+
+
+## Phiên 2026-10-30 · Xác minh CI và rà soát tiếp luồng xác thực
+
+### Kết quả kiểm tra
+- GitHub Actions Validate run `41080430725` trên source commit `8e895e865a593568c5d05787e8141f4f9175e0d5`: `completed / success`.
+- GitHub Actions Validate run `41080518346` trên docs commit `436c957d6492676e6ebe1ee1154202c7a4c3b52a`: `completed / success`.
+- Đã đọc lại Gateway, Membership service, Firebase Auth, app shell, Workshop Dashboard, Cloud Functions và Firestore Rules.
+- Xác nhận Google OAuth vẫn phục vụ đăng nhập kho local; Bot/Cộng đồng tenant bị khóa cho đến khi Membership được xác minh.
+- `getTenantPrincipal()` lấy role từ Membership Firestore, kiểm tra tenant/member active và UID/tenant khớp. Chưa có state machine hoàn chỉnh cho no-membership/disabled/tenant selection.
+- Cloud Functions hiện chỉ có trigger tính earnings; chưa có callable function xác minh employee card + PIN và cấp Firebase Custom Token.
+- Cần tiếp tục rà soát mọi điểm dùng role và mọi thao tác tenant trước khi coi B2/B6 hoàn tất.
+
+### Giới hạn
+- CI PASS không thay thế kiểm thử Firebase runtime, tài khoản Admin/Worker thật hoặc smoke test Termux.
+- Không sửa Firestore Rules, không deploy Firebase production, không merge PR #2, không sửa `main`.
+- Không đánh dấu B2/B6 hoàn tất; vẫn là công việc đang triển khai.
+
+### Vị trí tiếp theo
+- Tiếp tục B2/B6: hoàn thiện trạng thái Google/Membership và logout/session; sau đó triển khai B3/B4 bằng callable function + Firebase Custom Token, có rate limit/lockout và credential server-only.
