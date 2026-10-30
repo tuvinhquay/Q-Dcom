@@ -443,3 +443,35 @@
 1. Bổ sung/kiểm tra Firestore Rules Emulator tests cho bootstrap tenant mới, tạo Worker bởi Admin, tạo Admin bởi Admin, tự cấp Admin trên tenant cũ, tenant bị khóa và UID không khớp.
 2. Chỉ sửa Rules sau khi hiểu rõ bộ test hiện có và bảo đảm không làm hỏng các quy tắc PO, sản lượng, phụ phí, ví cá nhân, chat và các chức năng cũ.
 3. Chạy test Emulator + CI; ghi kết quả thực tế vào hai file trước khi chuyển tiếp.
+
+
+## Phiên 2026-10-31 · Siết quyền cấp Membership Admin và bổ sung kiểm thử
+
+### Đọc lịch sử và xác minh hiện trạng
+- Đọc lại `TIEN_DO_DU_AN.md` và `SESSION_LOG.md` trước khi làm tiếp.
+- Xác minh nhánh `feature/new-feature-foundation-2026-10-27` tồn tại; PR #2 vẫn mở ở trạng thái Draft, chưa merge.
+- PR head trước khi sửa: `eb6f52330d3500b93e514857c2a5d01ac195bd4b`. Bảng tiến độ cũ ghi HEAD `760f93d` nên cần đồng bộ lại.
+- Đọc `firestore.rules`, `tests/security/rules.test.mjs`, `.github/workflows/ci.yml` và cấu hình test `tests/security/package.json`.
+
+### Phát hiện
+- Rule tạo Membership cho phép Admin hiện hữu cấp role `admin` cho UID khác.
+- Rule cập nhật Membership chưa giới hạn người có quyền nâng role lên `admin`.
+- Điều kiện bootstrap trước đó dùng `existsAfter` nhưng chưa yêu cầu tenant chưa tồn tại trước giao dịch; vì vậy chưa khóa rõ bootstrap vào giao dịch tạo tenant mới.
+
+### Đã thay đổi
+- Bổ sung test Rules: Admin tạo Worker được phép; Admin tạo Admin bị từ chối; Admin không phải owner không thể nâng Worker lên Admin; không thể tự tạo Membership Admin trên tenant đã tồn tại; bootstrap owner + tenant trong cùng batch được phép.
+- Sửa `firestore.rules`: Admin thông thường chỉ tạo Worker; bootstrap Admin yêu cầu `!exists(tenant)` trước và `existsAfter(tenant)` sau cùng ownerUid khớp caller; chỉ ownerUid được phép cập nhật Membership thành role Admin.
+- Commit test: `5014a05eb7260f64c80861c465cb8a4f0f249ed3`.
+- Commit Rules: `b397150ac59145272db9e87e33a277e271034e49`.
+
+### Kiểm thử và giới hạn
+- GitHub Actions Validate run `41147559429` trên đúng commit `b397150` đã bắt đầu; các bước Node setup đang chạy, các bước Emulator còn chờ.
+- Chưa có kết quả cuối cùng từ lint/typecheck/build/Firestore Emulator; không đánh dấu Technical PASS.
+- Chưa thử Firebase project thật hoặc Termux; chưa cần người dùng thao tác thủ công ở bước này.
+- Không merge PR #2, không deploy Firebase production, không sửa `main`.
+
+### Vị trí tiếp theo
+1. Kiểm tra kết quả workflow `41147559429` và log Emulator.
+2. Nếu test phát hiện sai, sửa Rules/test và xác minh lại.
+3. Sau khi Rules PASS, tiếp tục Membership state machine, auth/session/logout và kiểm thử role/tenant.
+4. Chỉ sau đó chuyển sang callable employee card + PIN và Firebase Custom Token.
