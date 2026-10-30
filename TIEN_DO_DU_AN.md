@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-30 · chuẩn hóa trạng thái Membership ở app shell  
+> **Cập nhật gần nhất:** 2026-10-30 · sửa lint trong Membership state effect  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -203,3 +203,10 @@ Sau mỗi phiên làm việc:
 - GitHub Actions Validate cho commit này đã được kích hoạt; tại thời điểm ghi log còn `in_progress`, chưa đánh dấu Technical PASS.
 - Chưa kiểm thử Firebase thật hoặc Termux; chưa thay đổi Rules/deploy/merge.
 - Bước kế tiếp: đợi CI; kiểm tra lại luồng Google OAuth và các trạng thái no-membership/tenant selection, đồng thời rà soát quyền server-side trước khi mở thêm tính năng.
+
+
+### 2026-10-30 — Sửa lỗi lint sau khi triển khai Membership state
+- CI của commit `a4c87bec` thất bại tại ESLint `react-hooks/set-state-in-effect`: cập nhật state đồng bộ trong effect.
+- Đã chỉnh cấu trúc state Membership thành một kết quả gắn với tenantId/UID; trong effect chỉ ghi state khi kết quả bất đồng bộ trả về. Trạng thái loading được suy ra khi kết quả hiện tại chưa khớp tenant/UID đang chọn.
+- Commit sửa: `8e895e865a593568c5d05787e8141f4f9175e0d5`.
+- CI Validate cho commit sửa đang chạy; chưa đánh dấu PASS.
