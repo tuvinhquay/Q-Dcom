@@ -223,11 +223,15 @@ service cloud.firestore {
           && request.resource.data.active == true
           && request.resource.data.createdAt == request.time
           && (
+            (
             isTenantAdmin(tenantId)
+            && request.resource.data.role == 'worker'
+          )
             || (
               isRealUser()
               && request.auth.uid == memberUid
               && request.resource.data.role == 'admin'
+              && !exists(/databases/$(database)/documents/tenants/$(tenantId))
               && existsAfter(/databases/$(database)/documents/tenants/$(tenantId))
               && getAfter(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerUid == request.auth.uid
             )
@@ -236,7 +240,11 @@ service cloud.firestore {
           && validTenantMember(tenantId, memberUid)
           && request.resource.data.tenantId == resource.data.tenantId
           && request.resource.data.uid == resource.data.uid
-          && request.resource.data.createdAt == resource.data.createdAt;
+          && request.resource.data.createdAt == resource.data.createdAt
+          && (
+            request.resource.data.role == 'worker'
+            || get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerUid == request.auth.uid
+          );
         allow delete: if isTenantAdmin(tenantId) && memberUid != request.auth.uid;
       }
 
