@@ -249,3 +249,26 @@
 ### Vị trí bàn giao
 - Mở `TIEN_DO_DU_AN.md` để xem và cập nhật trạng thái công việc.
 - Tiếp tục A5 rồi lập kế hoạch chi tiết nhóm B — Authentication + Membership + Authorization.
+
+
+## Phiên 2026-10-30 · Xác minh baseline và bắt đầu chuẩn bị nhóm Authentication
+
+### Đã kiểm tra
+- Nhánh `feature/new-feature-foundation-2026-10-27`, HEAD ban đầu `760f93dfbfc6e92ab9535931af2d404789acedde`; PR #2 đang mở ở Draft, chưa merge.
+- GitHub Actions `Validate` ở HEAD hiện tại: PASS. Các bước gồm lint, TypeScript, Next.js build, build Cloud Functions và Firestore Rules Emulator.
+- Đã đọc lại các tệp trọng tâm: `lib/firebase.ts`, `lib/services/gatekeeperService.ts`, `lib/services/tenantService.ts`, `lib/tenancy/authorization.ts`, `types/tenant.ts`, `components/qdcom-app.tsx`, `components/workshop-dashboard.tsx`, `functions/src/index.ts`, `firestore.rules`, `lib/db/qdcomDB.ts`, `lib/sync/googleDriveBackup.ts`.
+
+### Phát hiện cần xử lý
+- Đăng nhập thẻ hiện tại chỉ tra cứu `qdcom.local_members.v1` trong localStorage, không xác minh phía máy chủ và không tạo Firebase Auth session.
+- Google OAuth xác thực Firebase và lưu hồ sơ nhưng chưa bắt buộc kiểm tra Membership tập trung trước khi vào các khu vực tenant.
+- Khi tải Membership thất bại, UI đang gán role Worker thay vì trạng thái loading/denied rõ ràng.
+- Dashboard xưởng đang có luồng Firebase Auth riêng; cần hợp nhất về một nguồn phiên đăng nhập và principal.
+- Dexie v2 đã có migration giữ sản phẩm cũ ở `local-default`; Google Drive backup đã tách tên file theo tenant. Không được phá hai cơ chế này.
+
+### Trạng thái và giới hạn
+- Đã cập nhật `TIEN_DO_DU_AN.md`: A5 🟢; A6/A7 và B1 🟡.
+- CI PASS không thay thế kiểm tra tài khoản Firebase thật, kiểm thử thiết bị và regression các chức năng cũ.
+- Phiên này chưa sửa mã nguồn ứng dụng, chưa deploy Firebase production, chưa merge PR.
+
+### Vị trí tiếp theo
+- Hoàn tất thiết kế Authentication Gateway, mô hình thông tin xác thực nhân viên và luồng cấp Firebase Custom Token; sau đó mới triển khai từng phần cùng kiểm thử Emulator.
