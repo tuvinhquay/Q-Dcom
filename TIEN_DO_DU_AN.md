@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-30 · triển khai B2 Authentication Gateway  
+> **Cập nhật gần nhất:** 2026-10-30 · chuẩn hóa trạng thái Membership ở app shell  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -25,8 +25,8 @@
 | Khảo sát yêu cầu và vấn đề — Phase 1 | 🟢 | Đã thống nhất yêu cầu, vai trò Admin/Worker, luồng sản xuất và các chức năng phải bảo toàn |
 | Kiểm tra Authentication & Authorization — Phase 2 | 🟢 | Đã rà soát tĩnh các luồng và tệp chính; chưa phải kiểm toán bảo mật toàn diện hoặc kiểm thử runtime |
 | Lập kế hoạch triển khai theo từng nhóm | 🟡 | Đã tạo thiết kế nền tảng Authentication/Membership; tiếp tục chi tiết hóa và triển khai từng bước |
-| Sửa mã nguồn / triển khai thực tế | 🟡 | Đã thêm Authentication Gateway và chuyển luồng kết nối xưởng qua gateway; đang chờ CI đúng HEAD |
-| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI cho commit mới đang chạy; chưa có kiểm tra Firebase thật/Termux |
+| Sửa mã nguồn / triển khai thực tế | 🟡 | Đã thêm Gateway, chuyển Dashboard xưởng và bỏ role fallback cho tenant ở app shell; CI commit mới đang chạy |
+| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI commit mới đang chạy; chưa có kiểm tra Firebase thật/Termux |
 
  > **Vị trí đang làm:** B2 — đã tạo `lib/auth/authGateway.ts` và chuyển xác minh tenant trong `WorkshopDashboard` qua gateway; cần xác nhận CI đúng HEAD, sau đó tiếp tục trạng thái quyền và luồng Google.
 
@@ -45,11 +45,11 @@
 ### Giai đoạn B — Authentication + Membership + Authorization
 
 - [x] 🟢 B1. Hoàn tất bản thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên trong `AUTHENTICATION_ARCHITECTURE.md`.
-- [ ] 🟡 B2. Đang triển khai Gateway xác minh Firebase Auth session và Membership; bước tích hợp Google OAuth ở màn hình chính vẫn còn.
+- [ ] 🟡 B2. Đã thêm Gateway xác minh Firebase Auth session + Membership và tích hợp vào Dashboard xưởng; màn hình chính đã dùng Gateway để xác minh tenant. Google OAuth vẫn cần hoàn thiện luồng trạng thái/no-membership.
 - [ ] ⚪ B3. Thiết kế đăng nhập thẻ nhân viên có xác minh bảo mật phía máy chủ; không dùng mã thẻ đơn lẻ làm bằng chứng xác thực.
 - [ ] ⚪ B4. Phát hành Firebase Auth session hợp lệ cho nhân viên sau khi xác minh.
 - [ ] ⚪ B5. Hợp nhất Membership và Tenant context; role lấy từ dữ liệu có thẩm quyền phía máy chủ.
-- [ ] ⚪ B6. Xử lý trạng thái loading / authorized / denied rõ ràng; loại bỏ việc tự gán Worker khi chưa tải xong quyền.
+- [ ] 🟡 B6. App shell đã có trạng thái local_only / loading / authorized / denied; bỏ fallback Worker cho tenant và khóa Bot/Cộng đồng tenant khi chưa xác minh. Chờ CI và kiểm thử đầy đủ.
 - [ ] ⚪ B7. Chuẩn hóa đăng xuất, thu hồi thành viên, vô hiệu hóa tài khoản và xử lý phiên hết hạn.
 - [ ] ⚪ B8. Kiểm tra quyền tại UI, backend/Cloud Functions và Firestore Rules; UI ẩn mục không thay thế bảo mật.
 - [ ] ⚪ B9. Kiểm thử tự động: Google, thẻ nhân viên, Admin, Worker, thành viên bị khóa, tenant khác.
@@ -192,3 +192,14 @@ Sau mỗi phiên làm việc:
 - Giới hạn: đây là lớp xác minh phiên + membership cho kết nối xưởng, chưa hoàn thành toàn bộ Google OAuth/Membership state machine; employee card + PIN/Custom Token chưa triển khai.
 - Không deploy Firebase production, không merge PR #2, không sửa `main`.
 - Vị trí tiếp theo: xác minh CI đúng HEAD; tiếp tục bỏ role fallback Worker ở app shell, chuẩn hóa trạng thái denied/loading, rồi tích hợp Google OAuth mà không làm mất local-first/Drive backup.
+
+
+### 2026-10-30 — Chuẩn hóa Membership state trong app shell
+- Sửa `components/qdcom-app.tsx`: thay truy vấn Membership trực tiếp bằng `authorizeTenantSession()`.
+- Thêm trạng thái `local_only`, `loading`, `authorized`, `denied`; khi đổi tenant sẽ reset principal và bắt đầu xác minh lại.
+- Loại bỏ việc gán role Worker khi Membership tải lỗi. Role Worker chỉ còn là giá trị mặc định phục vụ ngữ cảnh kho local-default; không dùng để mở dữ liệu tenant.
+- Khóa màn hình Bot và Cộng đồng khi đang xác minh hoặc bị từ chối quyền tenant; hiển thị lý do và hướng người dùng sang Quản lý xưởng.
+- Commit source: `a4c87bec57046840e6533cb9ad75214cdccca146`.
+- GitHub Actions Validate cho commit này đã được kích hoạt; tại thời điểm ghi log còn `in_progress`, chưa đánh dấu Technical PASS.
+- Chưa kiểm thử Firebase thật hoặc Termux; chưa thay đổi Rules/deploy/merge.
+- Bước kế tiếp: đợi CI; kiểm tra lại luồng Google OAuth và các trạng thái no-membership/tenant selection, đồng thời rà soát quyền server-side trước khi mở thêm tính năng.
