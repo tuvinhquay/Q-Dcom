@@ -30,7 +30,7 @@ import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveSt
 import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
 import { getActiveTenantId, subscribeActiveTenantChange } from "@/lib/tenancy/activeTenant";
-import { getTenantPrincipal } from "@/lib/services/tenantService";
+import { authorizeTenantSession } from "@/lib/auth/authGateway";
 import type { TenantRole } from "@/types/tenant";
 import type { Product, ProductStatus } from "@/types/product";
 
@@ -132,7 +132,9 @@ export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("local-default");
-  const [activeTenantRoleContext, setActiveTenantRoleContext] = useState<{ tenantId: string; uid: string; role: TenantRole }>({ tenantId: "local-default", uid: "", role: "worker" });
+  const [activeTenantRoleContext, setActiveTenantRoleContext] = useState<{ tenantId: string; uid: string; role: TenantRole } | null>(null);
+  const [tenantAuthorizationState, setTenantAuthorizationState] = useState<"local_only" | "loading" | "authorized" | "denied">("local_only");
+  const [tenantAuthorizationMessage, setTenantAuthorizationMessage] = useState("");
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
@@ -202,16 +204,34 @@ export function QDcomApp() {
   }, []);
   useEffect(() => {
     const uid = userProfile?.firebaseUid;
-    if (!uid || activeTenantId === "local-default") return;
+    if (activeTenantId === "local-default") {
+      setActiveTenantRoleContext(null);
+      setTenantAuthorizationState("local_only");
+      setTenantAuthorizationMessage("");
+      return;
+    }
     let cancelled = false;
-    void getTenantPrincipal(uid, activeTenantId).then((principal) => {
-      if (!cancelled) {
-        setActiveTenantRoleContext({ tenantId: activeTenantId, uid, role: principal.role });
+    setActiveTenantRoleContext(null);
+    setTenantAuthorizationState("loading");
+    setTenantAuthorizationMessage("");
+    if (!uid) {
+      setTenantAuthorizationState("denied");
+      setTenantAuthorizationMessage("Cần đăng nhập Google bằng Firebase Auth và được cấp Membership của xưởng.");
+      return () => { cancelled = true; };
+    }
+    void authorizeTenantSession(activeTenantId).then(({ principal }) => {
+      if (cancelled) return;
+      if (principal.uid !== uid) {
+        setTenantAuthorizationState("denied");
+        setTenantAuthorizationMessage("Phiên đăng nhập không khớp với hồ sơ đang mở. Vui lòng đăng nhập lại.");
+        return;
       }
-    }).catch(() => {
-      if (!cancelled) {
-        setActiveTenantRoleContext({ tenantId: activeTenantId, uid, role: "worker" });
-      }
+      setActiveTenantRoleContext({ tenantId: activeTenantId, uid, role: principal.role });
+      setTenantAuthorizationState("authorized");
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setTenantAuthorizationState("denied");
+      setTenantAuthorizationMessage(error instanceof Error ? error.message : "Không thể xác minh quyền truy cập xưởng.");
     });
     return () => { cancelled = true; };
   }, [activeTenantId, userProfile?.firebaseUid]);
@@ -257,7 +277,11 @@ export function QDcomApp() {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
   }, []);
 
-  const currentTenantRole = activeTenantId === "local-default" || activeTenantRoleContext.tenantId !== activeTenantId || activeTenantRoleContext.uid !== (userProfile?.firebaseUid ?? "") ? "worker" : activeTenantRoleContext.role;
+  const currentTenantRole: TenantRole = activeTenantId === "local-default"
+    ? "worker"
+    : tenantAuthorizationState === "authorized" && activeTenantRoleContext?.tenantId === activeTenantId && activeTenantRoleContext.uid === (userProfile?.firebaseUid ?? "")
+      ? activeTenantRoleContext.role
+      : "worker";
   const activeProducts = products.filter((product) => product.status !== "hidden");
   const shownProducts = activeProducts.filter((product) => {
     const text = query.trim().toLocaleLowerCase("vi");
@@ -310,6 +334,10 @@ export function QDcomApp() {
   }
   function askBot(text: string) {
     const clean = text.trim(); if (!clean) return;
+    if (activeTenantId !== "local-default" && tenantAuthorizationState !== "authorized") {
+      notify("Chưa xác minh Membership của xưởng. Không thể tra cứu dữ liệu theo quyền tenant.");
+      return;
+    }
     appendMessage("user", clean);
     const answer = parseQBotQuery(clean, products, vocabulary, { tenantId: activeTenantId, role: currentTenantRole, uid: userProfile?.firebaseUid ?? userProfile?.peerId });
     appendMessage("assistant", answer.message, answer.products.map((product) => product.id));
@@ -723,7 +751,8 @@ export function QDcomApp() {
             </section>
           </>}
 
-          {page === "bot" && <>
+          {page === "bot" && activeTenantId !== "local-default" && tenantAuthorizationState !== "authorized" && <section className="community-login-required glass"><ShieldCheck /><div><strong>{tenantAuthorizationState === "loading" ? "Đang xác minh quyền thành viên…" : "Chưa được xác minh quyền truy cập xưởng"}</strong><p>{tenantAuthorizationMessage || "Không mở tra cứu theo tenant trước khi Membership hợp lệ."}</p></div></section>}
+          {page === "bot" && (activeTenantId === "local-default" || tenantAuthorizationState === "authorized") && <>
             <div className="page-heading"><div><div className="eyebrow"><Sparkles /> Trợ lý tra cứu nội bộ</div><h1>Hỏi Q-Dcom</h1><p>Tìm theo mã mẫu, tên, thương hiệu, tồn kho hoặc vị trí kệ.</p></div><span className="connection-pill"><i />Trợ lý sẵn sàng</span></div>
             <div className="chat-layout"><section className="chat-window glass"><div className="chat-header"><div className="bot-mark"><Bot /></div><div className="chat-heading"><strong>Q-Dcom Bot <span>@q</span></strong><small><i /> Đang tra cứu dữ liệu kho hiện tại</small></div><button className="quiet-btn" onClick={() => setMessages([{ id: Date.now(), role: "assistant", text: "Cuộc trò chuyện mới. Bạn muốn tra cứu mẫu hàng nào?" }])}>Làm mới</button></div>
               <div className="chat-messages"><div className="chat-date">HÔM NAY</div>{messages.map((message) => <div className={`message ${message.role}`} key={message.id}>{message.role === "assistant" && <div className="message-bot-icon"><Bot /></div>}<div><div className="message-bubble">{message.text}{message.role === "assistant" && message.productIds?.map((id) => { const product = products.find((item) => item.id === id); return product ? <div className="rich-result" key={id}><div className="rich-result-main"><ProductImage product={product} className="rich-result-image" /><div><div className="rich-result-title">{product.name}</div><div className="rich-result-id">ID: {product.id} · {product.brand}</div><div className="rich-result-meta"><span>{product.color}</span><span>{product.quantity} sản phẩm</span><span>{product.location}</span></div></div></div><button className="primary-btn" onClick={() => setSelectedId(product.id)}>Xem chi tiết <ArrowRight /></button></div> : null; })}</div><div className="message-time">{message.role === "user" ? "Bạn" : "Q-Dcom"} · vừa xong</div></div></div>)}<div ref={messageEnd} /></div>
@@ -731,7 +760,8 @@ export function QDcomApp() {
             </section><aside className="chat-aside"><section className="aside-panel glass"><h3>Truy vấn nhanh</h3><div className="query-list">{["@q nike màu đen id 183t1o4","@q 183t1o4 còn mấy đôi","@q 184y99 ở đâu","@q mẫu sắp hết hàng"].map((item) => <button className="query-chip" key={item} onClick={() => askBot(item)}>{item}<ArrowRight /></button>)}</div></section><section className="aside-panel glass"><h3>Q-Dcom hiểu gì?</h3><p className="aside-note">Bot đối chiếu mã hàng, thương hiệu, màu sắc và từ khóa trong danh mục. Câu hỏi về số lượng hoặc vị trí sẽ có câu trả lời ngắn gọn.</p></section><section className="aside-panel glass"><div className="aside-status"><ShieldCheck size={14} /> Tra cứu theo dữ liệu kho hiện tại</div></section></aside></div>
           </>}
 
-          {page === "community" && <>
+          {page === "community" && activeTenantId !== "local-default" && tenantAuthorizationState !== "authorized" && <section className="community-login-required glass"><ShieldCheck /><div><strong>{tenantAuthorizationState === "loading" ? "Đang xác minh quyền thành viên…" : "Chưa được xác minh quyền truy cập xưởng"}</strong><p>{tenantAuthorizationMessage || "Đang kiểm tra Membership từ phiên Firebase Auth."}</p><button className="primary-btn" onClick={() => setPage("workshop")}>Mở quản lý xưởng <ArrowRight /></button></div></section>}
+          {page === "community" && (activeTenantId === "local-default" || tenantAuthorizationState === "authorized") && <>
             <div className="page-heading"><div><div className="eyebrow"><Users /> Kết nối thành viên</div><h1>Cộng đồng chat</h1><p>Tìm kiếm ID/QR, tạo nhóm và trao đổi tin nhắn. @q chỉ tra cứu dữ liệu IndexedDB cục bộ.</p></div></div>
             {activeTenantId !== "local-default"
               ? <section className="community-login-required glass"><ShieldCheck /><div><strong>Cộng đồng đã được cô lập theo mã xưởng</strong><p>Để tránh gửi nhầm tin nhắn sang cộng đồng dùng chung cũ, hãy sử dụng phòng chat tenant bên trong mục Sản lượng xưởng.</p><button className="primary-btn" onClick={() => setPage("workshop")}>Mở cộng đồng xưởng <ArrowRight /></button></div></section>
