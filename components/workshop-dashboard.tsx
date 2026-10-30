@@ -6,7 +6,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { AlertTriangle, Camera, Clock3, Factory, MessageCircle, Plus, RefreshCw, ShieldCheck, UserPlus, Wallet, X } from "lucide-react";
 import { getFirebaseAuth, isFirebaseConfigured, signInWithGooglePopup, signOutFirebaseUser } from "@/lib/firebase";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
-import { createTenant, getTenantPrincipal } from "@/lib/services/tenantService";
+import { createTenant } from "@/lib/services/tenantService";
+import { authorizeTenantSession } from "@/lib/auth/authGateway";
 import { setActiveTenantId } from "@/lib/tenancy/activeTenant";
 import {
   addWorkshopWorker, answerWorkshopQBot, deleteWorkshopPurchaseOrder, getMyEarnings, getWorkshopSettings,
@@ -155,7 +156,8 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
   async function connectTenant() {
     setBusy(true); setError(""); setNotice("");
     try {
-      const active = await getTenantPrincipal(uid, tenantIdInput.trim(), employeeCode.trim());
+      const authorization = await authorizeTenantSession(tenantIdInput.trim(), employeeCode.trim());
+      const active = authorization.principal;
       setChatMessages([]);
       setBotAnswers({});
       setPrincipal(active);
@@ -176,7 +178,8 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
     try {
       const id = await createTenant({ name: tenantName, uid, displayName: signedInName || workerName || "Quản lý xưởng", employeeCode });
       setTenantIdInput(id);
-      const active = await getTenantPrincipal(uid, id);
+      const authorization = await authorizeTenantSession(id);
+      const active = authorization.principal;
       setChatMessages([]);
       setBotAnswers({});
       setPrincipal(active);
