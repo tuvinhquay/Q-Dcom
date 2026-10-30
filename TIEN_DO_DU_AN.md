@@ -233,3 +233,13 @@ Sau mỗi phiên làm việc:
 - Cloud Functions hiện chưa có callable endpoint cho employee card + PIN/Custom Token; B3/B4 vẫn chưa triển khai.
 - Chưa sửa source code trong lượt rà soát này; chưa chạy CI mới, chưa chạy Firebase Emulator/Termux hoặc tài khoản thật. Vì vậy không đánh dấu B2/B6 PASS.
 - Vị trí tiếp theo: hoàn thiện state machine và đồng bộ auth/session ở app shell; bổ sung test cho no-membership/disabled/tenant mismatch; sau đó mới xây dựng B3/B4 với PIN hash/credential server-only, rate limit/lockout và Firebase Custom Token.
+
+
+### 2026-10-31 — Tiếp tục rà soát quyền cấp Membership Admin
+- Đọc lại lịch sử trong `TIEN_DO_DU_AN.md` và `SESSION_LOG.md` trước khi tiếp tục; giữ nguyên nhánh tính năng và các ràng buộc bảo toàn dữ liệu/chức năng cũ.
+- Đối chiếu trực tiếp `firestore.rules`, `tenantService.ts`, `authGateway.ts`, `authorization.ts`, `functions/src/index.ts` và luồng app shell trên nhánh `feature/new-feature-foundation-2026-10-27`.
+- Phát hiện rủi ro cần ưu tiên kiểm thử: điều kiện `allow create` tại `tenants/{tenantId}/members/{memberUid}` hiện cho phép nhánh `isTenantAdmin(tenantId)` tạo Membership với cả role `admin` lẫn `worker`. Cần xác định lại chính sách mời thành viên: Admin thông thường chỉ được tạo Worker; cấp Admin bổ sung phải có quy trình chủ sở hữu/ủy quyền riêng.
+- Điều kiện tự tạo Admin hiện dựa vào `existsAfter(tenant)` và `ownerUid == request.auth.uid`; cần kiểm thử tình huống tenant đã tồn tại nhưng thiếu Membership để xác nhận không thể tự khôi phục/tự cấp quyền ngoài quy trình tạo tenant nguyên tử.
+- Chưa sửa Rules hoặc source, chưa chạy Emulator trong phiên này. Đây là phát hiện rà soát tĩnh, chưa kết luận khai thác được cho đến khi có test Rules tái hiện.
+- B2/B6 tiếp tục 🟡; không đánh dấu PASS. B3/B4 vẫn ⚪. Không deploy production, không merge PR #2, không sửa `main`.
+- Vị trí tiếp theo: viết/điều chỉnh bộ test Firestore Rules cho các ca tạo Worker, Admin, tự nâng quyền, tenant cũ/tenant mới; sau khi có test bảo vệ mới sửa Rules và chạy CI/Emulator.
