@@ -28,7 +28,7 @@
 | Sửa mã nguồn / triển khai thực tế | ⚪ | Chưa bắt đầu trong chu kỳ công việc mới này |
 | Kiểm tra kỹ thuật và kiểm tra thực tế | ⚪ | Chưa bắt đầu |
 
-> **Vị trí đang làm:** Chuẩn bị kế hoạch triển khai nhóm 1 — Authentication + Membership + Authorization. Chưa có mã nguồn nào được sửa trong chu kỳ này.
+> **Vị trí đang làm:** Bắt đầu nhóm B — chuẩn hóa Google OAuth và Membership Gateway (B2), sau khi đã xác minh baseline và hoàn tất thiết kế kiến trúc (B1). Chưa sửa mã nguồn ứng dụng; mới cập nhật tài liệu kỹ thuật.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -44,7 +44,7 @@
 
 ### Giai đoạn B — Authentication + Membership + Authorization
 
-- [ ] 🟡 B1. Đang thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên.
+- [x] 🟢 B1. Hoàn tất bản thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên trong `AUTHENTICATION_ARCHITECTURE.md`.
 - [ ] ⚪ B2. Chuẩn hóa Google OAuth: xác thực Firebase Auth, kiểm tra trạng thái hồ sơ và Membership.
 - [ ] ⚪ B3. Thiết kế đăng nhập thẻ nhân viên có xác minh bảo mật phía máy chủ; không dùng mã thẻ đơn lẻ làm bằng chứng xác thực.
 - [ ] ⚪ B4. Phát hành Firebase Auth session hợp lệ cho nhân viên sau khi xác minh.
@@ -168,3 +168,9 @@ Sau mỗi phiên làm việc:
 - Xác nhận lại các vấn đề trọng yếu trong mã nguồn: đăng nhập thẻ nhân viên hiện chỉ tra cứu hồ sơ localStorage; Google OAuth đang tạo/cập nhật hồ sơ cục bộ và điều hướng vào app mà chưa bắt buộc xác minh Membership; trạng thái lỗi tải Membership đang bị hạ xuống role Worker; dashboard xưởng có luồng Firebase Auth riêng.
 - Xác nhận Dexie version 2 đã có migration gán sản phẩm cũ vào `local-default`; Google Drive backup đã tách tên file theo tenant; các phần này phải được bảo toàn và regression.
 - Chưa sửa mã nguồn ứng dụng, chưa deploy Firebase production, chưa merge PR. Bắt đầu chuẩn bị thiết kế Authentication Gateway tập trung.
+
+
+### 2026-10-30 — Hoàn tất thiết kế Authentication Gateway
+- 🟢 B1: Tạo `AUTHENTICATION_ARCHITECTURE.md`, mô tả luồng Firebase Auth thống nhất, Membership principal, Google OAuth, thẻ nhân viên + PIN, Custom Token, trạng thái UI, vị trí mã nguồn dự kiến và bộ kiểm thử.
+- Vị trí tiếp theo: B2 — triển khai Google OAuth qua Membership Gateway. Sau đó B3/B4 — credential thẻ nhân viên và Firebase Custom Token.
+- Lưu ý: B1 chỉ là hoàn tất thiết kế; các bước B2 trở đi chưa triển khai.
