@@ -290,3 +290,31 @@
 
 ### Vị trí bàn giao
 - Bắt đầu B2: triển khai Google OAuth dùng Membership Gateway và trạng thái UI thống nhất; sau đó mới triển khai credential thẻ nhân viên và Custom Token.
+
+
+## Phiên 2026-10-30 · Tiếp tục triển khai nền tảng xác thực Q-Dcom
+
+### Kiểm tra hiện trạng
+- Xác nhận nhánh `feature/new-feature-foundation-2026-10-27` tồn tại.
+- PR #2 vẫn mở và đang ở trạng thái Draft; chưa merge vào `main`.
+- PR head SHA tại thời điểm kiểm tra: `760f93dfbfc6e92ab9535931af2d404789acedde`.
+- Workflow run được tìm thấy có head SHA `9c2b7d35718a00b1460c7e860ba8925f35606e74`, cũ hơn PR head. Vì vậy không đánh dấu CI PASS cho HEAD hiện tại.
+- Đọc lại `components/qdcom-app.tsx`, `lib/firebase.ts`, `lib/services/tenantService.ts`, `lib/tenancy/authorization.ts`, `firestore.rules`, `functions/src/index.ts`, `types/tenant.ts`, `AUTH_REGISTER_GUIDE.md`, `package.json` và workflow CI.
+
+### Phát hiện được xác nhận trong mã nguồn
+- `submitLocalLogin()` tìm member ID trong localStorage và mở workspace; không xác minh PIN/mật khẩu phía server, không tạo Firebase Auth session.
+- `handleGoogleAuthorization()` xử lý Google identity và hồ sơ, nhưng chưa có Membership Gateway bắt buộc trước khi mở các chức năng tenant.
+- `currentTenantRole` dùng `worker` làm fallback khi tenant/UID context chưa khớp; cần thay bằng trạng thái loading/denied tách biệt.
+- `getTenantPrincipal()` đọc role từ membership Firestore là nền tảng có thể tái sử dụng, nhưng employeeCode chỉ là giá trị đối chiếu, không phải yếu tố xác thực.
+- Google Drive access token và quyền backup phải độc lập với membership của xưởng.
+- File `firestore.rules` trong repo không chứng minh được rules đang deploy ở Firebase Console giống hệt.
+
+### Đã thực hiện
+- Tạo `AUTH_MEMBERSHIP_DESIGN.md` mô tả kiến trúc Authentication Gateway, trạng thái phiên, Google/employee login, Membership, ma trận quyền, các điều kiện bảo mật và tiêu chí nghiệm thu.
+- Cập nhật `TIEN_DO_DU_AN.md`: A5 vẫn 🟡 vì CI chưa xác minh trên HEAD hiện tại; A6 và B1 🟡 vì đang chuẩn bị thiết kế/triển khai.
+- Không sửa mã nguồn ứng dụng; không thay đổi Firestore Rules; không deploy Firebase; không merge PR.
+
+### Vị trí tiếp theo
+- Hoàn tất baseline CI/check cho đúng PR head và đối chiếu file/rules hiện tại.
+- Chốt thiết kế B1 và danh sách file/rủi ro/rollback.
+- Sau đó triển khai B2 — lớp Authentication/Session Gateway dùng chung, giữ nguyên Google Drive Backup và các chức năng local-first.
