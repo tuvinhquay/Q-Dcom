@@ -341,3 +341,24 @@
 ### Vị trí tiếp theo
 - Kiểm tra CI đúng HEAD mới nhất.
 - Tiếp tục chuẩn hóa trạng thái quyền trong app shell và luồng Google OAuth; giữ nguyên chế độ local-first cho kho offline và backup Drive.
+
+
+## Phiên 2026-10-30 · Chuẩn hóa trạng thái Membership ở app shell
+
+### Đã thực hiện
+- Thay luồng đọc Membership trực tiếp trong `components/qdcom-app.tsx` bằng `authorizeTenantSession()`.
+- Thêm state rõ ràng: `local_only`, `loading`, `authorized`, `denied`.
+- Khi đổi tenant, xóa principal cũ trước khi kiểm tra tenant mới; không giữ quyền cũ trong lúc tải.
+- Bỏ fallback gán role Worker khi xác minh Membership thất bại.
+- Khóa Bot và Cộng đồng ở tenant không phải local-default cho đến khi Membership được xác minh.
+- Kho local-default vẫn giữ chế độ local-first, không yêu cầu Firebase Auth/Membership để truy cập dữ liệu cục bộ.
+
+### Commit và kiểm tra
+- Source commit: `a4c87bec57046840e6533cb9ad75214cdccca146`.
+- Workflow Validate chạy trên đúng commit `a4c87bec`; tại thời điểm ghi nhận còn `in_progress`.
+- Chưa chạy Termux hoặc Firebase thật; chưa đánh dấu B6/B2 hoàn tất.
+- Không thay đổi Firestore Rules, không deploy production, không merge PR.
+
+### Vị trí tiếp theo
+- Xác nhận kết quả CI cho commit mới.
+- Rà soát hoàn chỉnh Google OAuth flow, xử lý no-membership/tenant selection và đồng bộ auth state khi đăng xuất/hết hạn phiên.
