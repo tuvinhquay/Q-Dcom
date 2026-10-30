@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 
 const rules = readFileSync(resolve(process.cwd(), "../../firestore.rules"), "utf8");
 const env = await initializeTestEnvironment({
@@ -22,6 +22,7 @@ try {
       ["tenant-a", "admin-a", "admin"],
       ["tenant-a", "worker-a", "worker"],
       ["tenant-a", "worker-b", "worker"],
+      ["tenant-a", "manager-a", "admin"],
       ["tenant-b", "admin-b", "admin"],
     ]) {
       await setDoc(doc(db, "tenants", tenantId, "members", uid), {
@@ -51,6 +52,37 @@ try {
   const adminA = auth("admin-a");
   const workerA = auth("worker-a");
   const workerB = auth("worker-b");
+
+  // Existing tenant admins may add Workers, but cannot grant Admin to another UID.
+  await assertSucceeds(setDoc(doc(adminA, "tenants", "tenant-a", "members", "new-worker"), {
+    tenantId: "tenant-a", uid: "new-worker", role: "worker", displayName: "New Worker",
+    employeeCode: "NW-01", active: true, createdAt: serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(adminA, "tenants", "tenant-a", "members", "new-admin"), {
+    tenantId: "tenant-a", uid: "new-admin", role: "admin", displayName: "New Admin",
+    employeeCode: "NA-01", active: true, createdAt: serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(adminA, "tenants", "tenant-a", "members", "owner-a"), {
+    tenantId: "tenant-a", uid: "owner-a", role: "admin", displayName: "Owner A",
+    employeeCode: "OA-01", active: true, createdAt: serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(auth("manager-a"), "tenants", "tenant-a", "members", "worker-b"), {
+    tenantId: "tenant-a", uid: "worker-b", role: "admin", displayName: "Worker B",
+    employeeCode: "worker-b", active: true, createdAt: new Date("2026-10-27T00:00:00.000Z"),
+  }));
+
+  // Owner bootstrap is allowed only when the tenant and first Admin are created atomically.
+  const bootstrapDb = auth("new-owner");
+  const bootstrapBatch = writeBatch(bootstrapDb);
+  const bootstrapTime = serverTimestamp();
+  bootstrapBatch.set(doc(bootstrapDb, "tenants", "tenant-new"), {
+    name: "Xưởng mới", ownerUid: "new-owner", active: true, createdAt: bootstrapTime,
+  });
+  bootstrapBatch.set(doc(bootstrapDb, "tenants", "tenant-new", "members", "new-owner"), {
+    tenantId: "tenant-new", uid: "new-owner", role: "admin", displayName: "New Owner",
+    employeeCode: "OWNER-01", active: true, createdAt: bootstrapTime,
+  });
+  await assertSucceeds(bootstrapBatch.commit());
 
   await assertSucceeds(getDoc(doc(workerA, "tenants", "tenant-a", "purchaseOrders", "po-a")));
   await assertFails(getDoc(doc(workerA, "tenants", "tenant-b", "purchaseOrders", "po-b")));
