@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-30 · sửa lint trong Membership state effect  
+> **Cập nhật gần nhất:** 2026-10-30 · xác minh CI sau sửa Membership state và rà soát tiếp luồng Google/tenant  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -25,10 +25,10 @@
 | Khảo sát yêu cầu và vấn đề — Phase 1 | 🟢 | Đã thống nhất yêu cầu, vai trò Admin/Worker, luồng sản xuất và các chức năng phải bảo toàn |
 | Kiểm tra Authentication & Authorization — Phase 2 | 🟢 | Đã rà soát tĩnh các luồng và tệp chính; chưa phải kiểm toán bảo mật toàn diện hoặc kiểm thử runtime |
 | Lập kế hoạch triển khai theo từng nhóm | 🟡 | Đã tạo thiết kế nền tảng Authentication/Membership; tiếp tục chi tiết hóa và triển khai từng bước |
-| Sửa mã nguồn / triển khai thực tế | 🟡 | Đã thêm Gateway, chuyển Dashboard xưởng và bỏ role fallback cho tenant ở app shell; CI commit mới đang chạy |
-| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI commit mới đang chạy; chưa có kiểm tra Firebase thật/Termux |
+| Sửa mã nguồn / triển khai thực tế | 🟡 | Đã thêm Gateway, tích hợp Dashboard xưởng, khóa Bot/Cộng đồng tenant khi chưa xác minh; tiếp tục hoàn thiện Google/Membership và session |
+| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI Validate của commit source `8e895e8` và commit docs `436c957` đều PASS; chưa có kiểm tra Firebase thật/Termux |
 
- > **Vị trí đang làm:** B2 — đã tạo `lib/auth/authGateway.ts` và chuyển xác minh tenant trong `WorkshopDashboard` qua gateway; cần xác nhận CI đúng HEAD, sau đó tiếp tục trạng thái quyền và luồng Google.
+  > **Vị trí đang làm:** B2/B6 — CI đã PASS cho các commit source mới nhất đã kiểm tra; tiếp tục chuẩn hóa Google sign-in/Membership state và kiểm tra mọi điểm dùng role trước khi làm B3 thẻ nhân viên.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -39,17 +39,17 @@
 - [x] 🟢 A3. Rà soát yêu cầu Phase 1.
 - [x] 🟢 A4. Rà soát tĩnh Authentication & Authorization trong Phase 2.
 - [x] 🟢 A5. Kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa. (HEAD `760f93d`; PR #2 vẫn Draft; workflow Validate mới nhất PASS toàn bộ 11 bước.)
-- [ ] 🟡 A6. Đã lập bản thiết kế nền tảng tại `AUTH_MEMBERSHIP_DESIGN.md`; danh sách file cụ thể, rủi ro và rollback chi tiết sẽ được chốt trước khi sửa code.
-- [ ] 🟡 A7. CI baseline đã PASS lint, TypeScript, Next.js build, Cloud Functions build và Firestore Emulator; còn thiếu smoke test trên thiết bị và regression thực tế các chức năng cũ.
+- [ ] 🟡 A6. Đã có `AUTHENTICATION_ARCHITECTURE.md`; tiếp tục cập nhật danh sách file/rủi ro/rollback theo các phát hiện triển khai thực tế.
+- [ ] 🟡 A7. CI Validate đã PASS trên source commit `8e895e8` và docs commit `436c957`; còn thiếu smoke test thiết bị và regression thực tế các chức năng cũ.
 
 ### Giai đoạn B — Authentication + Membership + Authorization
 
 - [x] 🟢 B1. Hoàn tất bản thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên trong `AUTHENTICATION_ARCHITECTURE.md`.
-- [ ] 🟡 B2. Đã thêm Gateway xác minh Firebase Auth session + Membership và tích hợp vào Dashboard xưởng; màn hình chính đã dùng Gateway để xác minh tenant. Google OAuth vẫn cần hoàn thiện luồng trạng thái/no-membership.
+- [ ] 🟡 B2. Gateway xác minh Firebase Auth session + Membership đã được tích hợp vào Dashboard xưởng và app shell; CI PASS trên các commit gần nhất. Cần hoàn thiện hiển thị no-membership/disabled/error và xử lý Google sign-in theo trạng thái tenant.
 - [ ] ⚪ B3. Thiết kế đăng nhập thẻ nhân viên có xác minh bảo mật phía máy chủ; không dùng mã thẻ đơn lẻ làm bằng chứng xác thực.
 - [ ] ⚪ B4. Phát hành Firebase Auth session hợp lệ cho nhân viên sau khi xác minh.
 - [ ] ⚪ B5. Hợp nhất Membership và Tenant context; role lấy từ dữ liệu có thẩm quyền phía máy chủ.
-- [ ] 🟡 B6. App shell đã có trạng thái local_only / loading / authorized / denied; bỏ fallback Worker cho tenant và khóa Bot/Cộng đồng tenant khi chưa xác minh. Chờ CI và kiểm thử đầy đủ.
+- [ ] 🟡 B6. App shell đã có trạng thái local_only / loading / authorized / denied; bỏ fallback Worker cho tenant và khóa Bot/Cộng đồng tenant khi chưa xác minh. CI PASS; cần rà soát toàn bộ điểm dùng role và kiểm thử runtime.
 - [ ] ⚪ B7. Chuẩn hóa đăng xuất, thu hồi thành viên, vô hiệu hóa tài khoản và xử lý phiên hết hạn.
 - [ ] ⚪ B8. Kiểm tra quyền tại UI, backend/Cloud Functions và Firestore Rules; UI ẩn mục không thay thế bảo mật.
 - [ ] ⚪ B9. Kiểm thử tự động: Google, thẻ nhân viên, Admin, Worker, thành viên bị khóa, tenant khác.
@@ -210,3 +210,14 @@ Sau mỗi phiên làm việc:
 - Đã chỉnh cấu trúc state Membership thành một kết quả gắn với tenantId/UID; trong effect chỉ ghi state khi kết quả bất đồng bộ trả về. Trạng thái loading được suy ra khi kết quả hiện tại chưa khớp tenant/UID đang chọn.
 - Commit sửa: `8e895e865a593568c5d05787e8141f4f9175e0d5`.
 - CI Validate cho commit sửa đang chạy; chưa đánh dấu PASS.
+
+
+### 2026-10-30 — Xác minh CI và rà soát tiếp luồng xác thực
+- Kiểm tra lại GitHub Actions bằng commit SHA cụ thể: workflow Validate run `41080430725` trên source commit `8e895e865a593568c5d05787e8141f4f9175e0d5` kết thúc `success`; run `41080518346` trên docs commit `436c957d6492676e6ebe1ee1154202c7a4c3b52a` cũng kết thúc `success`.
+- CI PASS là bằng chứng lint/typecheck/build/rules workflow theo cấu hình hiện tại; không thay thế Firebase runtime hoặc kiểm tra thực tế trên điện thoại.
+- Rà soát thêm `authGateway.ts`, `tenantService.ts`, `firebase.ts`, `qdcom-app.tsx`, `workshop-dashboard.tsx`, `functions/src/index.ts` và `firestore.rules`.
+- Xác nhận Google OAuth hiện vẫn có thể đăng nhập để dùng kho local; các màn hình Bot/Cộng đồng tenant đã bị khóa cho tới khi Membership được xác minh. Chưa có state machine đầy đủ cho no-membership/disabled/tenant selection và chưa có đăng nhập thẻ + PIN/Custom Token.
+- Xác nhận `getTenantPrincipal()` đọc role từ Membership Firestore và kiểm tra active; không chấp nhận role từ localStorage. Tuy nhiên cần tiếp tục rà soát mọi thao tác dữ liệu tenant và điểm dùng `currentTenantRole` để chắc chắn UI fallback không tạo đường truy cập.
+- Cloud Functions hiện chỉ có trigger tính lại earnings; chưa có callable auth endpoint cho employee card. Không triển khai thẻ nhân viên bằng cách so sánh mã thẻ ở client.
+- Không sửa Firestore Rules, không deploy Firebase, không merge PR #2, không sửa `main`.
+- Vị trí tiếp theo: hoàn thiện B2/B6 — trạng thái Google/Membership, xử lý session/logout và rà soát quyền; sau đó thiết kế và triển khai employee card + PIN qua callable function và Firebase Custom Token.
