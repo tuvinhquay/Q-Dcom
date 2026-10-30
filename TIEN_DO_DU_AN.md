@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-30  
+> **Cập nhật gần nhất:** 2026-10-30 · phiên tiếp tục triển khai  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -24,7 +24,7 @@
 |---|---|---|
 | Khảo sát yêu cầu và vấn đề — Phase 1 | 🟢 | Đã thống nhất yêu cầu, vai trò Admin/Worker, luồng sản xuất và các chức năng phải bảo toàn |
 | Kiểm tra Authentication & Authorization — Phase 2 | 🟢 | Đã rà soát tĩnh các luồng và tệp chính; chưa phải kiểm toán bảo mật toàn diện hoặc kiểm thử runtime |
-| Lập kế hoạch triển khai theo từng nhóm | 🟡 | Đang chuẩn bị kế hoạch chi tiết, bắt đầu từ nền tảng xác thực và phân quyền |
+| Lập kế hoạch triển khai theo từng nhóm | 🟡 | Đã tạo thiết kế nền tảng Authentication/Membership; tiếp tục chi tiết hóa và triển khai từng bước |
 | Sửa mã nguồn / triển khai thực tế | ⚪ | Chưa bắt đầu trong chu kỳ công việc mới này |
 | Kiểm tra kỹ thuật và kiểm tra thực tế | ⚪ | Chưa bắt đầu |
 
@@ -39,7 +39,7 @@
 - [x] 🟢 A3. Rà soát yêu cầu Phase 1.
 - [x] 🟢 A4. Rà soát tĩnh Authentication & Authorization trong Phase 2.
 - [x] 🟢 A5. Kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa. (HEAD `760f93d`; PR #2 vẫn Draft; workflow Validate mới nhất PASS toàn bộ 11 bước.)
-- [ ] ⚪ A6. Lập danh sách tệp sẽ sửa/tạo, rủi ro và cách quay lui cho nhóm công việc đầu tiên.
+- [ ] 🟡 A6. Đã lập bản thiết kế nền tảng tại `AUTH_MEMBERSHIP_DESIGN.md`; danh sách file cụ thể, rủi ro và rollback chi tiết sẽ được chốt trước khi sửa code.
 - [ ] 🟡 A7. CI baseline đã PASS lint, TypeScript, Next.js build, Cloud Functions build và Firestore Emulator; còn thiếu smoke test trên thiết bị và regression thực tế các chức năng cũ.
 
 ### Giai đoạn B — Authentication + Membership + Authorization
@@ -152,6 +152,14 @@ Sau mỗi phiên làm việc:
 7. Cập nhật `SESSION_LOG.md` để ghi chi tiết những gì đã làm trong phiên.
 
 ## 6. Lịch sử cập nhật tiến độ
+
+### 2026-10-30 — Tiếp tục triển khai và thiết kế nền tảng xác thực
+- Xác nhận nhánh `feature/new-feature-foundation-2026-10-27` tồn tại; PR #2 vẫn mở ở trạng thái Draft, chưa merge.
+- PR head SHA hiện tại: `760f93dfbfc6e92ab9535931af2d404789acedde`. Workflow run được tìm thấy có head SHA `9c2b7d35718a00b1460c7e860ba8925f35606e74`, cũ hơn PR head; chưa được coi là CI PASS cho HEAD hiện tại.
+- Đọc lại các luồng đăng nhập local ID, Google OAuth, tenant membership, role fallback, Firestore Rules, Cloud Functions và package/CI.
+- Tạo `AUTH_MEMBERSHIP_DESIGN.md`; đây là thiết kế đang chuẩn bị, chưa phải code đã triển khai.
+- Phát hiện cần xử lý: local ID login chỉ tra localStorage; Google flow chưa có Membership Gateway bắt buộc; tenant role fallback thành worker khi context chưa tải/không khớp; employeeCode hiện không phải yếu tố xác thực độc lập.
+- Vị trí tiếp theo: hoàn tất A5/A6 baseline và rà soát thiết kế B1, sau đó mới triển khai B2.
 
 ### 2026-10-30 — Khởi tạo bảng theo dõi
 - Tạo bảng tiến độ độc lập để theo dõi vị trí hiện tại, các bước đã hoàn thành, đang chuẩn bị và sẽ thực hiện.
