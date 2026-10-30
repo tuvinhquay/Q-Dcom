@@ -419,3 +419,27 @@
 - Tiếp tục B2/B6: triển khai state machine Membership rõ ràng và xử lý auth/session/logout nhất quán trong app shell; giữ Google Drive backup và kho local-first độc lập.
 - Thêm kiểm thử cho no-membership, member disabled, tenant mismatch, session hết hạn và lỗi mạng.
 - Chỉ sau khi B2/B6 có Technical PASS mới chuyển B3/B4: callable function xác minh PIN an toàn, rate limit/lockout và Firebase Custom Token.
+
+
+## Phiên 2026-10-31 · Rà soát quyền tạo Membership Admin
+
+### Đã đọc lịch sử và hiện trạng
+- Đọc lại toàn bộ phần lịch sử tiến độ gần nhất trong `TIEN_DO_DU_AN.md` và phần phiên gần nhất trong `SESSION_LOG.md` trước khi làm.
+- Đọc trực tiếp các file trên nhánh `feature/new-feature-foundation-2026-10-27`: `firestore.rules`, `lib/services/tenantService.ts`, `lib/auth/authGateway.ts`, `lib/tenancy/authorization.ts`, `components/qdcom-app.tsx`, `functions/src/index.ts`.
+- Xác nhận Gateway hiện chỉ tạo TenantPrincipal sau khi Firebase Auth user hợp lệ và Membership active, role hợp lệ; Gateway vẫn đang trả principal hoặc ném lỗi, chưa có state result đầy đủ cho từng tình huống Membership.
+
+### Phát hiện mới cần xác minh bằng Emulator
+- Trong rule tạo `tenants/{tenantId}/members/{memberUid}`, nhánh `isTenantAdmin(tenantId)` hiện không giới hạn role được tạo là `worker`. Vì vậy, theo biểu thức tĩnh, Admin hiện hữu có thể tạo Membership mang role `admin` cho UID khác. Cần chốt chính sách: mời Worker do Admin quản lý; cấp Admin bổ sung chỉ qua chủ tenant hoặc quy trình được ủy quyền rõ ràng.
+- Nhánh bootstrap Admin dùng `existsAfter(tenant)` và kiểm tra `ownerUid`; cần có test chứng minh nó chỉ hoạt động khi tenant và Membership Admin được tạo cùng giao dịch ban đầu, không mở đường tự cấp quyền trên tenant đã tồn tại.
+- Đây là cảnh báo từ đọc Rules tĩnh, chưa có test Emulator tái hiện; chưa được ghi nhận là lỗ hổng đã xác nhận khai thác.
+
+### Thay đổi trong phiên
+- Chỉ cập nhật tài liệu theo dõi; chưa sửa source code hoặc Firestore Rules.
+- Đã append kết quả và vị trí tiếp theo vào `TIEN_DO_DU_AN.md`, sau đó append nhật ký phiên này vào `SESSION_LOG.md`.
+- Chưa chạy lint/build/CI hoặc Firebase Emulator trong phiên này; không đánh dấu Technical PASS.
+- Không merge PR #2, không deploy Firebase production, không sửa `main`; không yêu cầu người dùng mở Termux ở bước này.
+
+### Việc tiếp theo
+1. Bổ sung/kiểm tra Firestore Rules Emulator tests cho bootstrap tenant mới, tạo Worker bởi Admin, tạo Admin bởi Admin, tự cấp Admin trên tenant cũ, tenant bị khóa và UID không khớp.
+2. Chỉ sửa Rules sau khi hiểu rõ bộ test hiện có và bảo đảm không làm hỏng các quy tắc PO, sản lượng, phụ phí, ví cá nhân, chat và các chức năng cũ.
+3. Chạy test Emulator + CI; ghi kết quả thực tế vào hai file trước khi chuyển tiếp.
