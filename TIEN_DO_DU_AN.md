@@ -38,13 +38,13 @@
 - [x] 🟢 A2. Xác định các chức năng cũ bắt buộc phải giữ.
 - [x] 🟢 A3. Rà soát yêu cầu Phase 1.
 - [x] 🟢 A4. Rà soát tĩnh Authentication & Authorization trong Phase 2.
-- [ ] 🟡 A5. Kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa.
+- [x] 🟢 A5. Kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa. (HEAD `760f93d`; PR #2 vẫn Draft; workflow Validate mới nhất PASS toàn bộ 11 bước.)
 - [ ] ⚪ A6. Lập danh sách tệp sẽ sửa/tạo, rủi ro và cách quay lui cho nhóm công việc đầu tiên.
-- [ ] ⚪ A7. Xác nhận baseline: build/test hiện tại và các chức năng cũ trước khi thay đổi.
+- [ ] 🟡 A7. CI baseline đã PASS lint, TypeScript, Next.js build, Cloud Functions build và Firestore Emulator; còn thiếu smoke test trên thiết bị và regression thực tế các chức năng cũ.
 
 ### Giai đoạn B — Authentication + Membership + Authorization
 
-- [ ] ⚪ B1. Thiết kế Authentication Gateway dùng chung cho mọi phương thức đăng nhập.
+- [ ] 🟡 B1. Đang thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên.
 - [ ] ⚪ B2. Chuẩn hóa Google OAuth: xác thực Firebase Auth, kiểm tra trạng thái hồ sơ và Membership.
 - [ ] ⚪ B3. Thiết kế đăng nhập thẻ nhân viên có xác minh bảo mật phía máy chủ; không dùng mã thẻ đơn lẻ làm bằng chứng xác thực.
 - [ ] ⚪ B4. Phát hành Firebase Auth session hợp lệ cho nhân viên sau khi xác minh.
@@ -158,3 +158,13 @@ Sau mỗi phiên làm việc:
 - Đánh dấu Phase 1 và Phase 2 là hoàn thành ở mức khảo sát/yêu cầu và rà soát tĩnh; không đồng nghĩa đã sửa code hoặc xác nhận bảo mật toàn diện.
 - Vị trí tiếp theo: A5 — kiểm tra lại trạng thái nhánh/CI/PR, sau đó lập kế hoạch chi tiết nhóm B.
 - Chưa sửa mã nguồn ứng dụng, chưa chạy deploy Firebase, chưa merge PR.
+
+
+### 2026-10-30 — Kiểm tra lại baseline trước triển khai nhóm B
+- Xác nhận nhánh làm việc hiện tại là `feature/new-feature-foundation-2026-10-27`, HEAD `760f93dfbfc6e92ab9535931af2d404789acedde`; không tạo nhánh tự động mới.
+- PR #2 vẫn mở ở trạng thái Draft, chưa merge vào `main`.
+- GitHub Actions workflow `Validate` tại HEAD hiện tại hoàn tất thành công. Các bước đã PASS: cài dependencies, lint, TypeScript, build Next.js, cài dependencies Cloud Functions, build Functions, thiết lập Java và kiểm tra Firestore Rules bằng Emulator.
+- Kết quả CI này chỉ chứng minh các bước tự động nói trên; chưa chứng minh luồng Google/nhân viên hoạt động trên Firebase thật hoặc regression thực tế trên điện thoại.
+- Xác nhận lại các vấn đề trọng yếu trong mã nguồn: đăng nhập thẻ nhân viên hiện chỉ tra cứu hồ sơ localStorage; Google OAuth đang tạo/cập nhật hồ sơ cục bộ và điều hướng vào app mà chưa bắt buộc xác minh Membership; trạng thái lỗi tải Membership đang bị hạ xuống role Worker; dashboard xưởng có luồng Firebase Auth riêng.
+- Xác nhận Dexie version 2 đã có migration gán sản phẩm cũ vào `local-default`; Google Drive backup đã tách tên file theo tenant; các phần này phải được bảo toàn và regression.
+- Chưa sửa mã nguồn ứng dụng, chưa deploy Firebase production, chưa merge PR. Bắt đầu chuẩn bị thiết kế Authentication Gateway tập trung.
