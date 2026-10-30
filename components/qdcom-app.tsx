@@ -132,9 +132,13 @@ export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("local-default");
-  const [activeTenantRoleContext, setActiveTenantRoleContext] = useState<{ tenantId: string; uid: string; role: TenantRole } | null>(null);
-  const [tenantAuthorizationState, setTenantAuthorizationState] = useState<"local_only" | "loading" | "authorized" | "denied">("local_only");
-  const [tenantAuthorizationMessage, setTenantAuthorizationMessage] = useState("");
+  const [tenantAuthorization, setTenantAuthorization] = useState<{
+    tenantId: string;
+    uid: string;
+    state: "authorized" | "denied";
+    role?: TenantRole;
+    message?: string;
+  } | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
@@ -204,34 +208,39 @@ export function QDcomApp() {
   }, []);
   useEffect(() => {
     const uid = userProfile?.firebaseUid;
-    if (activeTenantId === "local-default") {
-      setActiveTenantRoleContext(null);
-      setTenantAuthorizationState("local_only");
-      setTenantAuthorizationMessage("");
-      return;
-    }
+    if (activeTenantId === "local-default") return;
     let cancelled = false;
-    setActiveTenantRoleContext(null);
-    setTenantAuthorizationState("loading");
-    setTenantAuthorizationMessage("");
     if (!uid) {
-      setTenantAuthorizationState("denied");
-      setTenantAuthorizationMessage("Cần đăng nhập Google bằng Firebase Auth và được cấp Membership của xưởng.");
+      queueMicrotask(() => {
+        if (!cancelled) setTenantAuthorization({
+          tenantId: activeTenantId,
+          uid: "",
+          state: "denied",
+          message: "Cần đăng nhập Google bằng Firebase Auth và được cấp Membership của xưởng.",
+        });
+      });
       return () => { cancelled = true; };
     }
     void authorizeTenantSession(activeTenantId).then(({ principal }) => {
       if (cancelled) return;
       if (principal.uid !== uid) {
-        setTenantAuthorizationState("denied");
-        setTenantAuthorizationMessage("Phiên đăng nhập không khớp với hồ sơ đang mở. Vui lòng đăng nhập lại.");
+        setTenantAuthorization({
+          tenantId: activeTenantId,
+          uid,
+          state: "denied",
+          message: "Phiên đăng nhập không khớp với hồ sơ đang mở. Vui lòng đăng nhập lại.",
+        });
         return;
       }
-      setActiveTenantRoleContext({ tenantId: activeTenantId, uid, role: principal.role });
-      setTenantAuthorizationState("authorized");
+      setTenantAuthorization({ tenantId: activeTenantId, uid, state: "authorized", role: principal.role });
     }).catch((error: unknown) => {
       if (cancelled) return;
-      setTenantAuthorizationState("denied");
-      setTenantAuthorizationMessage(error instanceof Error ? error.message : "Không thể xác minh quyền truy cập xưởng.");
+      setTenantAuthorization({
+        tenantId: activeTenantId,
+        uid,
+        state: "denied",
+        message: error instanceof Error ? error.message : "Không thể xác minh quyền truy cập xưởng.",
+      });
     });
     return () => { cancelled = true; };
   }, [activeTenantId, userProfile?.firebaseUid]);
@@ -277,10 +286,18 @@ export function QDcomApp() {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
   }, []);
 
+  const tenantAuthorizationState = activeTenantId === "local-default"
+    ? "local_only"
+    : tenantAuthorization?.tenantId === activeTenantId && tenantAuthorization.uid === (userProfile?.firebaseUid ?? "")
+      ? tenantAuthorization.state
+      : "loading";
+  const tenantAuthorizationMessage = tenantAuthorization?.tenantId === activeTenantId
+    ? tenantAuthorization.message ?? ""
+    : "";
   const currentTenantRole: TenantRole = activeTenantId === "local-default"
     ? "worker"
-    : tenantAuthorizationState === "authorized" && activeTenantRoleContext?.tenantId === activeTenantId && activeTenantRoleContext.uid === (userProfile?.firebaseUid ?? "")
-      ? activeTenantRoleContext.role
+    : tenantAuthorizationState === "authorized" && tenantAuthorization?.role
+      ? tenantAuthorization.role
       : "worker";
   const activeProducts = products.filter((product) => product.status !== "hidden");
   const shownProducts = activeProducts.filter((product) => {
