@@ -52,18 +52,21 @@ Employee Card + PIN ┘                             |
 
 ### Dữ liệu đề xuất
 - Membership công khai: tenantId, uid, role, displayName, employeeCode, active.
-- Credential riêng server-only: tenantId, normalizedEmployeeCode, uid, salt, pinHash, failedAttempts, lockedUntil, active, updatedAt.
-- Credential không được đọc từ client; không lưu PIN dạng rõ hoặc hash yếu.
+- Credential riêng server-only tại `tenants/{tenantId}/employeeCredentials/{uid}`: tenantId, uid, employeeCode đã chuẩn hóa, salt, pinHash, active, failedAttempts, lockedUntil, updatedAt.
+- Bộ đếm chống dò PIN đặt riêng tại `employeeLoginAttempts/{key}`; key phải là giá trị băm từ tenant + mã thẻ + nguồn gọi, không lưu PIN.
+- Firestore Rules phải từ chối toàn bộ client read/write trên `employeeCredentials` và `employeeLoginAttempts`; chỉ Admin SDK trong Cloud Functions được thao tác.
+- Dùng password hashing có salt riêng và cost phù hợp (ví dụ scrypt); so sánh hash theo cách constant-time. Với mã thẻ không tồn tại cần thực hiện phép hash giả có cost tương đương để giảm rò rỉ qua thời gian phản hồi.
+- Không lưu PIN dạng rõ, không dùng SHA-256 đơn thuần và không ghi PIN/hash/token vào log.
 
 ### Quy trình
 1. Người dùng nhập mã xưởng, mã thẻ và PIN.
 2. Client gọi HTTPS Callable Function `loginWithEmployeeCard`.
-3. Function kiểm tra input, giới hạn tần suất và trạng thái khóa.
-4. Function tìm credential trong đúng tenant; xác minh PIN bằng thuật toán hash có salt và so sánh an toàn.
-5. Function kiểm tra tenant active và membership active.
-6. Nếu hợp lệ, Admin SDK phát hành Firebase Custom Token cho UID đã gắn với membership.
+3. Function kiểm tra input, App Check (khi app đã cấu hình), giới hạn tần suất theo tenant + mã thẻ + IP/nguồn gọi và trạng thái khóa.
+4. Function tìm credential trong đúng tenant; xác minh PIN bằng scrypt có salt riêng và so sánh constant-time. Mã thẻ không tồn tại vẫn chạy hash giả.
+5. Function kiểm tra tenant active và Membership active, employeeCode/UID/tenantId khớp nhau.
+6. Chỉ khi hợp lệ, Admin SDK phát hành Firebase Custom Token cho UID đã gắn với Membership; token không chứa role do client cung cấp.
 7. Client đăng nhập bằng `signInWithCustomToken`; sau đó chạy chung Membership Gateway như Google.
-8. Nếu thất bại, trả thông báo chung, không tiết lộ mã thẻ có tồn tại hay không.
+8. Nếu thất bại, trả thông báo chung; không tiết lộ mã thẻ có tồn tại hay không. Counter phải được cập nhật transactionally để tránh nhiều request song song vượt ngưỡng.
 
 ### Quản trị credential
 - Chỉ Admin đã được xác thực và có membership active mới được thêm nhân viên hoặc cấp/đặt lại PIN qua callable function.
@@ -114,7 +117,12 @@ Tên file có thể điều chỉnh sau khi kiểm tra import graph; không xóa
 - Sau đăng xuất, phiên Firebase bị thu hồi ở client; dữ liệu tenant không còn được truy cập.
 - Legacy local ID vẫn mở được dữ liệu offline được phép nhưng không truy cập Firestore tenant.
 
-## 9. Điều kiện hoàn thành nhóm B
+## 9. Trạng thái triển khai Employee Card
+- Đã bổ sung Firestore Rules từ chối client read/write tại `tenants/{tenantId}/employeeCredentials/{uid}`.
+- Đã thêm Rules Emulator tests cho việc client không đọc/ghi được credential và login-attempt records.
+- Đây mới là lớp bảo vệ dữ liệu. Callable Functions xác minh PIN, cấp Custom Token, rate limit và luồng UI chưa được triển khai; không được xem B3/B4 hoàn thành.
+
+## 10. Điều kiện hoàn thành nhóm B
 
 - Lint, TypeScript, Next.js build, Cloud Functions build PASS.
 - Firestore Rules và callable tests bằng Emulator PASS.
