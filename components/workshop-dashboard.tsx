@@ -103,24 +103,21 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       const nextUid = user?.isAnonymous ? "" : user?.uid ?? "";
       setUid(nextUid);
       setSignedInName(user?.displayName ?? displayName);
-      setPrincipal((current) => {
-        if (current && current.uid !== nextUid) {
-          setOrders([]);
-          setEntries([]);
-          setExtras([]);
-          setMembers([]);
-          setSettings(null);
-          setEarnings(null);
-          setChatMessages([]);
-          setBotAnswers({});
-          setNotice("");
-          setError("Phiên Firebase Auth đã thay đổi. Hãy xác minh lại quyền thành viên của xưởng.");
-          return null;
-        }
-        return current;
-      });
+      if (principal && principal.uid !== nextUid) {
+        setPrincipal(null);
+        setOrders([]);
+        setEntries([]);
+        setExtras([]);
+        setMembers([]);
+        setSettings(null);
+        setEarnings(null);
+        setChatMessages([]);
+        setBotAnswers({});
+        setNotice("");
+        setError("Phiên Firebase Auth đã thay đổi. Hãy xác minh lại quyền thành viên của xưởng.");
+      }
     });
-  }, [initialUid, displayName]);
+  }, [initialUid, displayName, principal]);
 
   useEffect(() => {
     if (!principal) return;
