@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-31 · siết quyền cấp Membership Admin và bổ sung kiểm thử Rules  
+> **Cập nhật gần nhất:** 2026-10-31 · CI PASS cho Rules Admin/Membership; bổ sung theo dõi Firebase Auth session trong app shell  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -26,9 +26,9 @@
 | Kiểm tra Authentication & Authorization — Phase 2 | 🟢 | Đã rà soát tĩnh các luồng và tệp chính; chưa phải kiểm toán bảo mật toàn diện hoặc kiểm thử runtime |
 | Lập kế hoạch triển khai theo từng nhóm | 🟡 | Đã tạo thiết kế nền tảng Authentication/Membership; tiếp tục chi tiết hóa và triển khai từng bước |
 | Sửa mã nguồn / triển khai thực tế | 🟡 | Đã thêm Gateway, tích hợp Dashboard xưởng, khóa Bot/Cộng đồng tenant khi chưa xác minh; tiếp tục hoàn thiện Google/Membership và session |
-| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI của commit bảo mật `b397150` đang chạy; CI PASS trước đó không thay thế kiểm tra mới. Chưa có kiểm tra Firebase thật/Termux |
+| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI run `41147559429` trên commit Rules `b397150` đã PASS toàn bộ workflow; commit app shell mới `5e640be` đang chờ CI. Chưa có kiểm tra Firebase thật/Termux |
 
-   > **Vị trí đang làm:** B2/B6 — rà soát và hoàn thiện trạng thái Google identity ↔ Membership; Google OAuth hiện vẫn lưu hồ sơ và điều hướng kho local, còn quyền tenant phải tiếp tục được xác minh độc lập qua Gateway. Chưa triển khai B3/B4.
+   > **Vị trí đang làm:** B2/B6/B7 — app shell đang được bổ sung đồng bộ Firebase Auth state để tự khóa tenant khi session mất/đổi UID. Google Sign-In và Drive backup vẫn độc lập với Membership. Chưa triển khai B3/B4.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -38,9 +38,9 @@
 - [x] 🟢 A2. Xác định các chức năng cũ bắt buộc phải giữ.
 - [x] 🟢 A3. Rà soát yêu cầu Phase 1.
 - [x] 🟢 A4. Rà soát tĩnh Authentication & Authorization trong Phase 2.
-- [x] 🟢 A5. Kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa. (PR #2 head `b397150`; PR vẫn Draft; workflow Validate trên head mới đang chạy.)
+- [x] 🟢 A5. Kiểm tra lại HEAD, trạng thái nhánh, CI và PR mới nhất trước khi bắt đầu sửa. PR #2 vẫn Draft, chưa merge; HEAD mới nhất hiện tại `5e640be`.
 - [ ] 🟡 A6. Đã có `AUTHENTICATION_ARCHITECTURE.md`; tiếp tục cập nhật danh sách file/rủi ro/rollback theo các phát hiện triển khai thực tế.
-- [ ] 🟡 A7. CI Validate đã PASS trên source commit `8e895e8` và docs commit `436c957`; còn thiếu smoke test thiết bị và regression thực tế các chức năng cũ.
+- [ ] 🟡 A7. CI Validate run `41147559429` trên Rules commit `b397150` đã PASS (lint, TypeScript, Next build, Functions build, Firestore Emulator); chờ CI cho app-shell commit `5e640be`; còn thiếu smoke test thiết bị và regression thực tế các chức năng cũ.
 
 ### Giai đoạn B — Authentication + Membership + Authorization
 
@@ -51,8 +51,8 @@
 - [ ] ⚪ B5. Hợp nhất Membership và Tenant context; role lấy từ dữ liệu có thẩm quyền phía máy chủ.
 - [ ] 🟡 B6. App shell đã có trạng thái local_only / loading / authorized / denied; bỏ fallback Worker cho tenant và khóa Bot/Cộng đồng tenant khi chưa xác minh. CI PASS; cần rà soát toàn bộ điểm dùng role và kiểm thử runtime.
 - [ ] ⚪ B7. Chuẩn hóa đăng xuất, thu hồi thành viên, vô hiệu hóa tài khoản và xử lý phiên hết hạn.
-- [ ] 🟡 B8. Rà soát và siết quyền Firestore Rules; đã bổ sung giới hạn tạo/nâng role Admin, còn chờ Emulator xác nhận và rà soát các thao tác khác.
-- [ ] 🟡 B9. Bổ sung kiểm thử Rules cho cấp/nâng Admin, bootstrap tenant mới, Worker và tenant khác; còn chờ CI/Emulator hoàn tất.
+- [x] 🟢 B8. Siết Firestore Rules: Admin thông thường chỉ tạo Worker; chỉ owner được nâng role Admin; bootstrap Admin chỉ trong giao dịch tạo tenant mới. CI Emulator PASS trên `b397150`.
+- [x] 🟢 B9. Emulator tests PASS cho Admin tạo Worker, chặn Admin tự cấp Admin/nâng quyền, bootstrap owner + tenant nguyên tử, cô lập tenant, Worker identity, private earnings và quyền duyệt phụ phí.
 - [ ] ⚪ B10. Technical PASS — lint, typecheck, build, test, rules/emulator và regression liên quan.
 - [ ] 🔵 B11. Chờ người dùng kiểm tra thực tế bằng tài khoản Admin và Worker.
 - [ ] ⚪ B12. Chỉ đóng nhóm khi Technical PASS và Practical PASS.
@@ -255,3 +255,13 @@ Sau mỗi phiên làm việc:
 - GitHub Actions Validate run `41147559429` trên đúng HEAD `b397150` đã được tạo và tại thời điểm cập nhật còn `in_progress`. Chưa có kết quả Emulator cuối cùng, chưa đánh dấu PASS.
 - PR #2 vẫn Draft, chưa merge; không deploy Firebase production; không thay đổi `main`.
 - Vị trí tiếp theo: đợi workflow Validate/Firestore Emulator; nếu PASS, tiếp tục kiểm tra các nhánh cập nhật Membership và bootstrap; nếu FAIL, sửa theo log rồi chạy lại. Sau khi Rules ổn định mới tiếp tục Membership state machine và employee PIN/Custom Token.
+
+
+### 2026-10-31 — Đồng bộ Firebase Auth session với quyền tenant
+- Đã xác minh workflow Validate run `41147559429` trên commit Rules `b397150ac59145272db9e87e33a277e271034e49` kết thúc `completed / success`; các bước lint, TypeScript, Next.js build, Cloud Functions build và Firestore Rules Emulator đều PASS.
+- Rà soát sâu app shell cho thấy quyền tenant trước đây chỉ được xác minh khi tenant/UID trong hồ sơ local thay đổi; nếu Firebase Auth session bị sign-out hoặc đổi tài khoản từ nơi khác, UI có thể giữ trạng thái authorized cũ cho tới lần tải/đổi tenant tiếp theo.
+- Sửa `components/qdcom-app.tsx`: đăng ký `onAuthStateChanged`, ghi nhận Firebase UID hiện tại và chỉ cho phép chạy Membership Gateway khi Firebase Auth đã sẵn sàng và UID phiên trùng UID hồ sơ. Khi session mất hoặc UID khác, trạng thái tenant bị từ chối và không dùng role fallback để cấp quyền.
+- Source commit: `5e640be01250a43851f9ed6e997b29943ba7eae4`.
+- CI cho commit app-shell mới đang chờ kết quả; chưa đánh dấu B2/B6/B7 hoặc Technical PASS.
+- Không thay đổi luồng Google Drive backup, Dexie/IndexedDB, kho local-default, QR, chat hoặc dữ liệu sản phẩm. Không deploy production, không merge PR #2, không sửa `main`.
+- Vị trí tiếp theo: xác minh CI cho `5e640be`; sau đó bổ sung test/state mapping cho no-membership, disabled tenant/member và session revocation; chỉ khi B2/B6/B7 ổn định mới bắt đầu B3/B4 employee card + PIN/Custom Token.
