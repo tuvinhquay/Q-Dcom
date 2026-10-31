@@ -509,3 +509,26 @@
 2. Tiếp tục xử lý state no-membership, disabled member/tenant và thu hồi session; giữ phạm vi Phase 2, không mở rộng tính năng khác.
 3. Sau khi B2/B6/B7 có test phù hợp mới triển khai B3/B4: callable employee card + PIN, rate limit/lockout và Firebase Custom Token.
 4. Cập nhật tiếp cả `TIEN_DO_DU_AN.md` và `SESSION_LOG.md` sau mỗi mốc.
+
+
+## Phiên 2026-10-31 · Thu hồi phiên xưởng khi Firebase Auth thay đổi
+
+### Đã kiểm tra
+- Đọc lại bảng tiến độ và nhật ký phiên trước khi sửa.
+- Xác minh CI run 41149954526 trên commit app shell 5e640be đã PASS đầy đủ; run docs 41150007455 trên commit 53e39cad cũng PASS.
+- Rà soát components/workshop-dashboard.tsx và phát hiện Auth observer chưa thu hồi principal/dữ liệu đang giữ khi Firebase Auth sign-out hoặc đổi UID; luồng kết nối/tạo xưởng chưa kiểm tra lại UID sau bước xác minh bất đồng bộ.
+
+### Đã thay đổi
+- Khi Firebase UID thay đổi so với principal hiện tại, Dashboard xưởng xóa principal và toàn bộ dữ liệu tenant đang giữ trong state: PO, production entries, extras, members, settings, earnings, chat và bot answers.
+- Thêm kiểm tra UID Firebase hiện tại trước khi kích hoạt principal sau khi kết nối xưởng hoặc tạo xưởng.
+- Source commits: e8953f3, 5346f99, 5341a97, 9eedc74.
+
+### Kiểm tra và giới hạn
+- Workflow Validate mới nhất 41167638066 trên commit 9eedc7462c1cffcf8a74e1e6d60dece095827aa8 đang in_progress; chưa được coi là PASS.
+- Chưa có Firebase runtime, Termux smoke test hoặc thử tài khoản Admin/Worker thật.
+- Không deploy production, không merge PR #2, không sửa main.
+
+### Việc tiếp theo
+1. Xác minh CI run 41167638066 hoàn tất và kiểm tra log nếu có lỗi.
+2. Tiếp tục state mapping cho no-membership, member disabled, tenant disabled và lỗi mạng; không cấp quyền dự phòng.
+3. Rà soát mọi điểm sử dụng TenantPrincipal/session và bảo đảm logout/đổi tài khoản thu hồi dữ liệu.
