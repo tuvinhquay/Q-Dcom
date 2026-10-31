@@ -1,5 +1,5 @@
 import { getFirebaseAuth } from "@/lib/firebase";
-import { getTenantPrincipal } from "@/lib/services/tenantService";
+import { getTenantPrincipal, TenantAccessError } from "@/lib/services/tenantService";
 import type { TenantPrincipal } from "@/lib/tenancy/authorization";
 
 export type AuthenticationState =
@@ -10,6 +10,9 @@ export type AuthenticationState =
   | "authorized"
   | "no_membership"
   | "membership_disabled"
+  | "tenant_disabled"
+  | "membership_invalid"
+  | "network_error"
   | "error";
 
 export interface TenantAuthorizationResult {
@@ -33,12 +36,24 @@ export async function authorizeTenantSession(
     throw new Error("signed_out: Hãy đăng nhập bằng tài khoản Google trước khi kết nối xưởng.");
   }
 
-  await user.getIdToken();
-  const principal = await getTenantPrincipal(user.uid, tenantId, employeeCode);
+  try {
+    await user.getIdToken();
+    const principal = await getTenantPrincipal(user.uid, tenantId, employeeCode);
 
-  if (principal.uid !== user.uid || principal.tenantId !== tenantId) {
-    throw new Error("error: Không thể xác minh danh tính thành viên của xưởng.");
+    if (principal.uid !== user.uid || principal.tenantId !== tenantId) {
+      throw new Error("Không thể xác minh danh tính thành viên của xưởng.");
+    }
+
+    return { state: "authorized", principal };
+  } catch (reason) {
+    if (reason instanceof TenantAccessError) throw reason;
+    const code = typeof reason === "object" && reason !== null && "code" in reason
+      ? String((reason as { code?: unknown }).code ?? "")
+      : "";
+    if (code.startsWith("firestore/") || code.startsWith("auth/network-request-failed")) {
+      throw new Error("network_error: Không thể kết nối máy chủ để xác minh quyền. Kiểm tra mạng rồi thử lại.");
+    }
+    throw reason;
   }
 
-  return { state: "authorized", principal };
 }
