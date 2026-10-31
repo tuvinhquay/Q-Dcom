@@ -100,8 +100,25 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
   useEffect(() => {
     if (!isFirebaseConfigured) return;
     return onAuthStateChanged(getFirebaseAuth(), (user) => {
-      setUid(user?.uid ?? "");
+      const nextUid = user?.isAnonymous ? "" : user?.uid ?? "";
+      setUid(nextUid);
       setSignedInName(user?.displayName ?? displayName);
+      setPrincipal((current) => {
+        if (current && current.uid !== nextUid) {
+          setOrders([]);
+          setEntries([]);
+          setExtras([]);
+          setMembers([]);
+          setSettings(null);
+          setEarnings(null);
+          setChatMessages([]);
+          setBotAnswers({});
+          setNotice("");
+          setError("Phiên Firebase Auth đã thay đổi. Hãy xác minh lại quyền thành viên của xưởng.");
+          return null;
+        }
+        return current;
+      });
     });
   }, [initialUid, displayName]);
 
