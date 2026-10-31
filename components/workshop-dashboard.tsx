@@ -197,6 +197,9 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       setTenantIdInput(id);
       const authorization = await authorizeTenantSession(id);
       const active = authorization.principal;
+      if (!getFirebaseAuth().currentUser || getFirebaseAuth().currentUser?.uid !== active.uid) {
+        throw new Error("Phiên đăng nhập đã thay đổi trong lúc tạo xưởng. Vui lòng đăng nhập lại.");
+      }
       setChatMessages([]);
       setBotAnswers({});
       setPrincipal(active);
