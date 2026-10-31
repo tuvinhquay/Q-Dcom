@@ -50,7 +50,7 @@ export async function authorizeTenantSession(
     const code = typeof reason === "object" && reason !== null && "code" in reason
       ? String((reason as { code?: unknown }).code ?? "")
       : "";
-    if (code.startsWith("firestore/") || code.startsWith("auth/network-request-failed")) {
+    if (["unavailable", "deadline-exceeded", "network-request-failed", "firestore/unavailable", "firestore/deadline-exceeded", "auth/network-request-failed"].includes(code)) {
       throw new Error("network_error: Không thể kết nối máy chủ để xác minh quyền. Kiểm tra mạng rồi thử lại.");
     }
     throw reason;
