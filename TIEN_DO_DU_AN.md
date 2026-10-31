@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-31 · Sửa Rules self-read Membership và đồng bộ quy trình cập nhật Firebase Rules  
+> **Cập nhật gần nhất:** 2026-10-31 · CI PASS cho Membership state, app shell auth-state và workshop session lifecycle  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -25,10 +25,10 @@
 | Khảo sát yêu cầu và vấn đề — Phase 1 | 🟢 | Đã thống nhất yêu cầu, vai trò Admin/Worker, luồng sản xuất và các chức năng phải bảo toàn |
 | Kiểm tra Authentication & Authorization — Phase 2 | 🟢 | Đã rà soát tĩnh các luồng và tệp chính; chưa phải kiểm toán bảo mật toàn diện hoặc kiểm thử runtime |
 | Lập kế hoạch triển khai theo từng nhóm | 🟡 | Đã tạo thiết kế nền tảng Authentication/Membership; tiếp tục chi tiết hóa và triển khai từng bước |
-| Sửa mã nguồn / triển khai thực tế | 🟡 | Đã phân biệt trạng thái tenant/Membership, xác minh lại quyền khi refresh và thu hồi dữ liệu xưởng khi phiên lỗi/đổi UID; chờ CI cho batch mới |
-| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI baseline và auth-session trước đó PASS; batch trạng thái Membership/Rules mới đang chờ run `41169076083` trên commit `96342c5`. Chưa có kiểm tra Firebase thật/Termux |
+| Sửa mã nguồn / triển khai thực tế | 🟢 | Đã tích hợp trạng thái xác thực rõ ràng vào app shell/Dashboard; thu hồi dữ liệu xưởng khi Auth đổi UID, Membership/tenant bị khóa hoặc xác minh thất bại |
+| Kiểm tra kỹ thuật và kiểm tra thực tế | 🔵 | CI run `41213360712` trên đúng HEAD `6314943` PASS toàn bộ lint, TypeScript, Next build, Functions build và Firestore Rules Emulator; còn chờ smoke test Firebase/Termux bằng tài khoản thật |
 
-    > **Vị trí đang làm:** B2/B6/B7 — bổ sung trạng thái phân biệt no-membership/member-disabled/tenant-disabled/membership-invalid/network-error; sửa thứ tự đọc Membership trước tenant và cho phép người dùng chỉ đọc document Membership của chính mình để xác định trạng thái. Thêm Emulator test cho thành viên/tenant bị khóa và user chưa được mời. CI batch mới đang chạy; chưa đánh dấu PASS. Google Sign-In và Drive backup vẫn độc lập với Membership. Chưa triển khai B3/B4.
+     > **Vị trí đang làm:** B2/B6 đã được triển khai và CI PASS trên commit `6314943`; B7 đã có cơ chế thu hồi session/dữ liệu khi Auth thay đổi và xác minh lại trước khi tải dữ liệu, hiện chờ kiểm tra thực tế. B3/B4 chưa bắt đầu: bước kế tiếp là thiết kế xác minh PIN nhân viên phía máy chủ và cấp Firebase Custom Token. Google Sign-In và quyền Drive vẫn độc lập với Membership.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -45,15 +45,15 @@
 ### Giai đoạn B — Authentication + Membership + Authorization
 
 - [x] 🟢 B1. Hoàn tất bản thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên trong `AUTHENTICATION_ARCHITECTURE.md`.
-- [ ] 🟡 B2. Gateway xác minh Firebase Auth session + Membership đã được tích hợp vào Dashboard xưởng và app shell; đang chuẩn hóa no-membership/member-disabled/tenant-disabled/membership-invalid/network-error. Batch mới đang chờ CI.
+- [x] 🟢 B2. Gateway xác minh Firebase Auth session + Membership; phân loại no-membership/member-disabled/tenant-disabled/membership-invalid/network-error; CI run `41213360712` PASS.
 - [ ] ⚪ B3. Thiết kế đăng nhập thẻ nhân viên có xác minh bảo mật phía máy chủ; không dùng mã thẻ đơn lẻ làm bằng chứng xác thực.
 - [ ] ⚪ B4. Phát hành Firebase Auth session hợp lệ cho nhân viên sau khi xác minh.
 - [ ] ⚪ B5. Hợp nhất Membership và Tenant context; role lấy từ dữ liệu có thẩm quyền phía máy chủ.
-- [ ] 🟡 B6. App shell có local_only / loading / authorized / denied; bỏ fallback Worker cho tenant và khóa Bot/Cộng đồng tenant khi chưa xác minh. Dashboard xưởng thu hồi dữ liệu khi Auth đổi UID hoặc xác minh lại thất bại; CI batch mới đang chờ.
+- [x] 🟢 B6. App shell đồng bộ Firebase Auth UID, không cấp role fallback; Dashboard hiển thị trạng thái xác minh rõ ràng. CI run `41213360712` PASS.
 - [ ] ⚪ B7. Đã bổ sung thu hồi principal/dữ liệu xưởng khi Auth đổi UID, refresh Membership/tenant không hợp lệ hoặc lỗi xác minh; cần kiểm tra runtime và hoàn thiện luồng revoke/expiry.
 - [x] 🟢 B8. Siết Firestore Rules: Admin thông thường chỉ tạo Worker; chỉ owner được nâng role Admin; bootstrap Admin chỉ trong giao dịch tạo tenant mới. CI Emulator PASS trên `b397150`.
 - [x] 🟢 B9. Emulator tests PASS cho Admin tạo Worker, chặn Admin tự cấp Admin/nâng quyền, bootstrap owner + tenant nguyên tử, cô lập tenant, Worker identity, private earnings và quyền duyệt phụ phí.
-- [ ] ⚪ B10. Technical PASS — lint, typecheck, build, test, rules/emulator và regression liên quan.
+- [ ] 🟡 B10. CI cho batch B2/B6/B7 đã PASS; B10 toàn Phase 2 chỉ đóng sau khi hoàn thành B3–B5 và chạy kiểm thử/regression tổng thể.
 - [ ] 🔵 B11. Chờ người dùng kiểm tra thực tế bằng tài khoản Admin và Worker.
 - [ ] ⚪ B12. Chỉ đóng nhóm khi Technical PASS và Practical PASS.
 
@@ -308,3 +308,14 @@ Sau mỗi phiên làm việc:
 - Chỉ thay đổi tài liệu; không sửa app, Rules, cấu hình Firebase hoặc dữ liệu.
 - PR #2 vẫn Draft; không merge, không deploy production, không sửa `main`.
 - Vị trí quay lại: Phase 2 — xác minh CI mới nhất cho Membership/Rules/session batch, sau đó tiếp tục B2/B6/B7. Chưa chuyển B3/B4 cho đến khi nhóm hiện tại ổn định.
+
+
+### 2026-10-31 — CI PASS cho Membership state và auth session UI
+- Xác minh đúng nhánh `feature/new-feature-foundation-2026-10-27`, PR #2 vẫn open/Draft; không merge, không deploy Firebase production, không sửa `main`.
+- CI run `41213360712` trên HEAD `631494360cd7e966ba44531ade6625ad42d29865` completed/success. Các bước lint, TypeScript, Next.js build, Cloud Functions build và Firestore Rules Emulator đều completed/success.
+- `authGateway.ts` có state mapping cho signed_out, no_membership, membership_disabled, tenant_disabled, membership_invalid, network_error và error; lỗi không xác minh được không tự cấp quyền.
+- `qdcom-app.tsx` chỉ xác minh tenant khi Firebase Auth đã khôi phục và UID phiên khớp UID hồ sơ; trạng thái lỗi được giữ rõ ràng thay vì fallback Worker.
+- `workshop-dashboard.tsx` xác minh Membership trước khi kết nối/refresh, kiểm tra UID sau xác minh và hiển thị thông báo trạng thái khi chưa có principal.
+- Cập nhật B2/B6 thành 🟢 theo bằng chứng CI. B7 chuyển 🔵 vì cơ chế kỹ thuật đã có và CI PASS nhưng chưa có smoke test trên Firebase thật/Termux. Không đánh dấu toàn Phase 2 hoàn thành.
+- Bảo toàn nguyên tắc: Google Sign-In không tự cấp Membership; Drive permission không phải quyền tenant; kho local-first/Dexie, Google OAuth/Drive Backup, QR, chat và dữ liệu sản phẩm không nằm trong phạm vi thay đổi của batch.
+- Vị trí tiếp theo: bắt đầu B3/B4 theo batch bảo mật employee card + PIN server-side + Firebase Custom Token; trước đó rà soát Cloud Functions, schema Membership và cơ chế rate limit hiện có. Không yêu cầu người dùng cung cấp PIN/secret thật.
