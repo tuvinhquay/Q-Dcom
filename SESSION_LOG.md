@@ -563,3 +563,23 @@
 2. Nếu FAIL, đọc log và sửa trước khi mở rộng.
 3. Nếu PASS, rà soát cách app shell hiển thị từng trạng thái và chạy smoke test có kiểm soát.
 4. Chỉ sau khi B2/B6/B7 ổn định mới chuyển sang employee card + PIN/Custom Token.
+
+
+## Phiên 2026-10-31 · Sửa Firestore Rules và thống nhất quy trình đồng bộ
+
+### Yêu cầu vận hành được chốt
+- Người dùng xác nhận muốn duy trì một file Rules chuẩn trong repository để mọi thay đổi app đều cập nhật đồng bộ.
+- Xác minh `firebase.json` đang trỏ Firestore Rules tới file gốc `firestore.rules`; tiếp tục dùng file này làm nguồn chuẩn duy nhất, không tạo bản trùng.
+- Trong Phase 1–2, cập nhật và kiểm thử Rules trong GitHub/Firestore Emulator; dự kiến gom cập nhật lên Firebase production một lần sau khi Phase 1–2 hoàn tất. Nếu phát hiện vấn đề bảo mật nghiêm trọng cần deploy sớm, phải báo và chờ người dùng xác nhận.
+ 
+### Phát hiện và sửa lỗi CI
+- Kiểm tra log CI run `41170674007`: Lint, TypeScript, Next.js Build và Cloud Functions Build đều PASS; Firestore Rules Emulator FAIL ở các ca đọc tenant metadata sau khi Membership bị vô hiệu hóa.
+- Sửa `firestore.rules`: cho phép tài khoản đã xác thực đọc metadata tenant đang hoạt động khi có document Membership gắn đúng UID, kể cả Membership inactive. Quyền dữ liệu nghiệp vụ vẫn yêu cầu Membership active và tenant active.
+- Bỏ import `assert` không dùng trong `tests/security/rules.test.mjs`.
+- Commits: Rules `bb80e1e`; test cleanup `bd215eb`; tài liệu quy trình Rules `1890574`.
+- CI run mới nhất được tạo trên commit test `bd215eb`: `41208926846`; cần xác minh kết quả cuối cùng trên HEAD mới nhất trước khi đánh dấu PASS.
+
+### Giới hạn và bảo toàn
+- Chưa deploy Firebase production; chưa merge PR #2; không sửa `main`.
+- Không thay đổi các luồng kho Dexie/IndexedDB, Google OAuth/Drive backup, QR, chat hoặc dữ liệu sản phẩm.
+- Tiếp tục Phase 2 sau khi CI Rules PASS; không chuyển sang Phase 3 trước khi hoàn thiện Membership/session.
