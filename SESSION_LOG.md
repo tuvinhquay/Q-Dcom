@@ -671,3 +671,27 @@
 
 ### Vị trí tiếp theo
 - Chốt schema credential, callable API, cơ chế rate limit và phương án kiểm thử Functions Emulator/CI; sau đó mới triển khai source theo nhóm nhỏ, kiểm tra trước khi commit.
+
+
+## Phiên 2026-10-31 · B3/B4 — lớp bảo vệ Firestore cho credential nhân viên
+
+### Thực hiện
+- Tạo nhánh riêng `feature/employee-card-pin-auth-2026-10-31` từ nhánh nền tảng.
+- Trong `firestore.rules`, thêm quy tắc từ chối mọi client read/write tại `tenants/{tenantId}/employeeCredentials/{uid}`.
+- Trong `tests/security/rules.test.mjs`, thêm fixture và kiểm tra client không đọc/ghi credential, cũng không đọc/ghi login-attempt records.
+- Cập nhật `AUTHENTICATION_ARCHITECTURE.md` với schema server-only, PIN hashing có salt, constant-time compare, dummy hash để giảm timing leak, rate limit transactionally và điều kiện kiểm tra tenant/Membership trước khi cấp token.
+- Cập nhật `TIEN_DO_DU_AN.md` ngay sau khi có thay đổi; B3/B4 vẫn 🟡, không đánh dấu hoàn tất.
+
+### Kiểm thử và giới hạn
+- Đã viết test Rules Emulator nhưng chưa chạy CI trên nhánh mới; hiện chưa có bằng chứng PASS cho các test mới.
+- Callable Functions xác minh PIN, cấp Custom Token, rate limit/lockout và client sign-in chưa được triển khai.
+- Lệnh ghi source callable đã bị cơ chế kiểm tra an toàn của công cụ chặn; không có source callable nào được commit. Không tìm cách vượt qua chặn.
+- Chưa deploy Firebase, chưa merge PR, không sửa `main`.
+
+### Bảo toàn
+- Không thay đổi kho sản phẩm, Dexie/IndexedDB, Google OAuth, Google Drive Backup, QR, chat hoặc dữ liệu sản phẩm.
+- Legacy local ID vẫn chỉ phục vụ hồ sơ/offline; không được dùng để mở tenant data.
+
+### Vị trí tiếp theo
+- Tiếp tục xây dựng/test lớp callable authentication trong một bước được phép; trước khi tích hợp UI phải có test Functions Emulator cho PIN sai, inactive member/tenant, tenant mismatch, rate limit và phát token đúng UID.
+- Sau đó tích hợp `signInWithCustomToken` vào client và xác minh lại bằng Membership Gateway.
