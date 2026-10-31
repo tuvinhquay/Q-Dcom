@@ -695,3 +695,9 @@
 ### Vị trí tiếp theo
 - Tiếp tục xây dựng/test lớp callable authentication trong một bước được phép; trước khi tích hợp UI phải có test Functions Emulator cho PIN sai, inactive member/tenant, tenant mismatch, rate limit và phát token đúng UID.
 - Sau đó tích hợp `signInWithCustomToken` vào client và xác minh lại bằng Membership Gateway.
+
+
+### Bổ sung mốc PR/CI — 2026-10-31
+- Mở PR #3 ở trạng thái Draft: https://github.com/tuvinhquay/Q-Dcom/pull/3, base `main`, head `feature/employee-card-pin-auth-2026-10-31`.
+- GitHub Actions run `41215522822` trên SHA `38a48f0d` đã khởi chạy theo pull_request; tại thời điểm ghi log, job Validate đang cài dependencies, chưa có kết luận.
+- PR #3 chỉ để chạy CI và review phần cô lập credential; không merge. B3/B4 vẫn 🟡 cho đến khi callable/token flow và kiểm thử đầy đủ.
