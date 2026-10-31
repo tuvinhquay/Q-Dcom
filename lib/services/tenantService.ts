@@ -42,15 +42,8 @@ export async function getTenantPrincipal(uid: string, tenantId: string, employee
     throw new TenantAccessError("membership_invalid", "Thiếu tài khoản hoặc mã xưởng.");
   }
 
-  const tenantRef = doc(db(), "tenants", tenantId);
-  const tenantSnapshot = await getDoc(tenantRef);
-  if (!tenantSnapshot.exists()) {
-    throw new TenantAccessError("tenant_not_found", "Xưởng không tồn tại.");
-  }
-  if (tenantSnapshot.data().active !== true) {
-    throw new TenantAccessError("tenant_disabled", "Xưởng hiện đã bị khóa. Hãy liên hệ người quản lý.");
-  }
-
+  // Read the caller's own Membership first. Rules permit this narrow self-read
+  // even when the member is inactive or has not yet been added.
   const memberSnapshot = await getDoc(doc(db(), "tenants", tenantId, "members", uid));
   if (!memberSnapshot.exists()) {
     throw new TenantAccessError("no_membership", "Tài khoản chưa được thêm vào xưởng này.");
@@ -66,6 +59,14 @@ export async function getTenantPrincipal(uid: string, tenantId: string, employee
   }
   if (employeeCode !== undefined && membership.employeeCode !== employeeCode.trim()) {
     throw new TenantAccessError("employee_code_mismatch", "Mã thẻ nhân viên không khớp với tài khoản Google này.");
+  }
+
+  const tenantSnapshot = await getDoc(doc(db(), "tenants", tenantId));
+  if (!tenantSnapshot.exists()) {
+    throw new TenantAccessError("tenant_not_found", "Xưởng không tồn tại.");
+  }
+  if (tenantSnapshot.data().active !== true) {
+    throw new TenantAccessError("tenant_disabled", "Xưởng hiện đã bị khóa. Hãy liên hệ người quản lý.");
   }
 
   return { uid, tenantId, role: membership.role as TenantRole };
