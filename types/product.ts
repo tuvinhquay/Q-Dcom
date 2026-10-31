@@ -2,6 +2,8 @@ export type ProductStatus = "available" | "low_stock" | "out_of_stock" | "hidden
 
 export interface Product {
   id: string;
+  /** Tenant/workshop ownership. Missing only on legacy imports before DB migration. */
+  tenantId?: string;
   name: string;
   brand: string;
   color: string;
