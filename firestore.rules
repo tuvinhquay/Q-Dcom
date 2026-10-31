@@ -217,7 +217,7 @@ service cloud.firestore {
       allow delete: if false;
 
       match /members/{memberUid} {
-        allow read: if isTenantMember(tenantId)
+        allow read: if isRealUser()
           && (request.auth.uid == memberUid || isTenantAdmin(tenantId));
         allow create: if validTenantMember(tenantId, memberUid)
           && request.resource.data.active == true
