@@ -15,6 +15,25 @@ export type AuthenticationState =
   | "network_error"
   | "error";
 
+
+/** Converts trusted gateway failures into explicit UI states; never grants access. */
+export function getAuthenticationState(reason: unknown): AuthenticationState {
+  if (reason instanceof TenantAccessError) {
+    switch (reason.code) {
+      case "no_membership": return "no_membership";
+      case "membership_disabled": return "membership_disabled";
+      case "tenant_disabled": return "tenant_disabled";
+      case "membership_invalid":
+      case "employee_code_mismatch":
+      case "tenant_not_found": return "membership_invalid";
+    }
+  }
+  const message = reason instanceof Error ? reason.message : String(reason ?? "");
+  if (message.startsWith("signed_out:")) return "signed_out";
+  if (message.startsWith("network_error:")) return "network_error";
+  return "error";
+}
+
 export interface TenantAuthorizationResult {
   state: "authorized";
   principal: TenantPrincipal;
