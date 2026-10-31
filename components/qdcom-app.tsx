@@ -8,6 +8,7 @@ import {
   TrendingUp, Utensils, Upload, Users, Video, X, IdCard, UserRound, BriefcaseBusiness,
 } from "lucide-react";
 import Image from "next/image";
+import { onAuthStateChanged } from "firebase/auth";
 import Link from "next/link";
 import type { ChangeEvent, CSSProperties, FormEvent, ReactNode } from "react";
 import { startTransition, useEffect, useRef, useState } from "react";
@@ -24,7 +25,7 @@ import { SearchBar } from "@/components/search/SearchBar";
 import { parseQBotQuery } from "@/lib/bot/qBotParser";
 import { copyDefaultVocabulary, type BotIntent, type BotVocabulary } from "@/lib/bot/vocabulary";
 import { qdcomDB, type QDcomMember } from "@/lib/db/qdcomDB";
-import { isFirebaseConfigured, signOutFirebaseUser, type GoogleAuthSession } from "@/lib/firebase";
+import { getFirebaseAuth, isFirebaseConfigured, signOutFirebaseUser, type GoogleAuthSession } from "@/lib/firebase";
 import { parseBackup, parseSharePayload, serializeBackup, createSharePayload } from "@/lib/sync/qdcomSync";
 import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveStorageQuota } from "@/lib/sync/googleDriveBackup";
 import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
@@ -132,6 +133,8 @@ export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("local-default");
+  const [firebaseAuthUid, setFirebaseAuthUid] = useState<string | null>(null);
+  const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);
   const [tenantAuthorization, setTenantAuthorization] = useState<{
     tenantId: string;
     uid: string;
@@ -207,16 +210,26 @@ export function QDcomApp() {
     return unsubscribeTenant;
   }, []);
   useEffect(() => {
+    if (!isFirebaseConfigured) {
+      queueMicrotask(() => setFirebaseAuthReady(true));
+      return;
+    }
+    return onAuthStateChanged(getFirebaseAuth(), (user) => {
+      setFirebaseAuthUid(user?.isAnonymous ? null : user?.uid ?? null);
+      setFirebaseAuthReady(true);
+    });
+  }, []);
+  useEffect(() => {
     const uid = userProfile?.firebaseUid;
-    if (activeTenantId === "local-default") return;
+    if (activeTenantId === "local-default" || !firebaseAuthReady) return;
     let cancelled = false;
-    if (!uid) {
+    if (!uid || firebaseAuthUid !== uid) {
       queueMicrotask(() => {
         if (!cancelled) setTenantAuthorization({
           tenantId: activeTenantId,
           uid: "",
           state: "denied",
-          message: "Cần đăng nhập Google bằng Firebase Auth và được cấp Membership của xưởng.",
+          message: "Phiên Firebase Auth không tồn tại hoặc không khớp tài khoản đang mở. Hãy đăng nhập lại bằng đúng tài khoản Google.",
         });
       });
       return () => { cancelled = true; };
@@ -243,7 +256,7 @@ export function QDcomApp() {
       });
     });
     return () => { cancelled = true; };
-  }, [activeTenantId, userProfile?.firebaseUid]);
+  }, [activeTenantId, firebaseAuthReady, firebaseAuthUid, userProfile?.firebaseUid]);
   useEffect(() => {
     if (messages.length) window.localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-80)));
     messageEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
