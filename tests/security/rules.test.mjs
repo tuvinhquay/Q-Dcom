@@ -35,6 +35,13 @@ try {
       tenantId: "tenant-a", uid: "disabled-worker", role: "worker", displayName: "Disabled Worker",
       employeeCode: "DW-01", active: false, createdAt: stamp,
     });
+    await setDoc(doc(db, "tenants", "tenant-a", "employeeCredentials", "worker-a"), {
+      tenantId: "tenant-a", uid: "worker-a", employeeCode: "worker-a",
+      salt: "test-salt", pinHash: "test-hash", active: true,
+    });
+    await setDoc(doc(db, "employeeLoginAttempts", "test-attempt"), {
+      tenantId: "tenant-a", failedAttempts: 1,
+    });
     await setDoc(doc(db, "tenants", "tenant-a", "purchaseOrders", "po-a"), {
       tenantId: "tenant-a", poCode: "PO-A", productName: "Áo", totalQuantity: 100, dueAt: "2026-11-01",
     });
@@ -92,6 +99,14 @@ try {
     employeeCode: "OWNER-01", active: true, createdAt: bootstrapTime,
   });
   await assertSucceeds(bootstrapBatch.commit());
+
+  // Employee PIN credentials and login-attempt records are server-only.
+  await assertFails(getDoc(doc(workerA, "tenants", "tenant-a", "employeeCredentials", "worker-a")));
+  await assertFails(setDoc(doc(workerA, "tenants", "tenant-a", "employeeCredentials", "forged"), {
+    tenantId: "tenant-a", uid: "worker-a", pinHash: "forged", salt: "forged", active: true,
+  }));
+  await assertFails(getDoc(doc(workerA, "employeeLoginAttempts", "test-attempt")));
+  await assertFails(setDoc(doc(workerA, "employeeLoginAttempts", "forged"), { failedAttempts: 0 }));
 
   // A user can read only their own Membership path to distinguish not-invited from disabled.
   await assertSucceeds(getDoc(doc(notInvited, "tenants", "tenant-a", "members", "not-invited")));
