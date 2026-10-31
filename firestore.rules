@@ -253,6 +253,11 @@ service cloud.firestore {
         allow delete: if isTenantAdmin(tenantId) && memberUid != request.auth.uid;
       }
 
+      // PIN credentials are server-only. Admin SDK bypasses Rules; no client may read or mutate them.
+      match /employeeCredentials/{uid} {
+        allow read, write: if false;
+      }
+
       match /purchaseOrders/{poId} {
         allow read: if isTenantMember(tenantId);
         allow create: if isTenantAdmin(tenantId)
