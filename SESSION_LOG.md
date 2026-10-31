@@ -532,3 +532,34 @@
 1. Xác minh CI run 41167638066 hoàn tất và kiểm tra log nếu có lỗi.
 2. Tiếp tục state mapping cho no-membership, member disabled, tenant disabled và lỗi mạng; không cấp quyền dự phòng.
 3. Rà soát mọi điểm sử dụng TenantPrincipal/session và bảo đảm logout/đổi tài khoản thu hồi dữ liệu.
+
+
+## Phiên 2026-10-31 · Batch Membership state, tenant disable và session lifecycle
+
+### Phạm vi và baseline
+- Đọc lại `TIEN_DO_DU_AN.md` và `SESSION_LOG.md` trước khi sửa.
+- Xác minh workflow run `41167699490` trên commit `80ce04c493b2512ba119b4c52b4ff8eecc6cb376` completed/success; lint, TypeScript, Next build, Functions build và Firestore Rules Emulator đều PASS.
+- PR #2 vẫn Draft; làm việc trên `feature/new-feature-foundation-2026-10-27`; không merge, không deploy production, không sửa `main`.
+
+### Thay đổi theo nhóm
+1. `tenantService.ts`: thêm mã lỗi phân biệt tenant không tồn tại/bị khóa, chưa có Membership, Membership bị khóa/sai, employee code không khớp.
+2. `authGateway.ts`: bổ sung các AuthenticationState liên quan và phân loại lỗi kết nối; lỗi không xác minh được không bao giờ trở thành quyền Worker.
+3. `workshop-dashboard.tsx`: thống nhất hàm clear session; xóa dữ liệu tenant trong state khi Auth đổi UID, xác minh thất bại hoặc refresh không còn quyền; refresh phải xác minh Membership lại trước khi tải.
+4. `firestore.rules`: cho phép người dùng Google chỉ đọc document Membership gắn đúng UID của mình; metadata tenant chỉ đọc khi có Membership record; dữ liệu nghiệp vụ vẫn yêu cầu tenant/member active.
+5. `tests/security/rules.test.mjs`: thêm ca user chưa được mời, member disabled và tenant disabled.
+
+### Phát hiện và xử lý trong lúc triển khai
+- Khi rà soát sâu, nhận ra thứ tự đọc tenant trước Membership không thể hoạt động cho người chưa là thành viên vì Rules không cho đọc tenant. Đã đổi thứ tự đọc Membership trước, đồng thời cập nhật Rules self-read có giới hạn để Gateway phân biệt no-membership với lỗi mạng mà không mở dữ liệu tenant.
+- Đã ổn định callback cleanup bằng `useCallback` để tránh dependency không ổn định trong React effect.
+
+### Kiểm tra và giới hạn
+- Các commit source/Rules/tests: `b4611a5`, `d377324`, `7c4e293`, `11cec20`, `3774044`, `cd47896`, `3c4646e`, `9d4f853`, `96342c5`.
+- CI run `41169076083` trên commit `96342c59bf46b58b807acf4eb47e76560f9d13e0` đang in_progress tại thời điểm ghi log. Chưa được coi là PASS.
+- Chưa chạy Firebase project thật/Termux; chưa kiểm thử tài khoản Admin/Worker thật. Chưa xác nhận UI runtime.
+- Không thay đổi Dexie/IndexedDB, Google OAuth/Drive backup, QR, kho local-default, chat hoặc dữ liệu sản phẩm ngoài phần session tenant; không triển khai PIN/Custom Token trong batch.
+
+### Vị trí tiếp theo
+1. Chờ CI run đúng HEAD và kiểm tra tất cả job, đặc biệt Firestore Rules Emulator.
+2. Nếu FAIL, đọc log và sửa trước khi mở rộng.
+3. Nếu PASS, rà soát cách app shell hiển thị từng trạng thái và chạy smoke test có kiểm soát.
+4. Chỉ sau khi B2/B6/B7 ổn định mới chuyển sang employee card + PIN/Custom Token.
