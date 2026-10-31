@@ -28,7 +28,7 @@
 | Sửa mã nguồn / triển khai thực tế | 🟢 | Đã tích hợp trạng thái xác thực rõ ràng vào app shell/Dashboard; thu hồi dữ liệu xưởng khi Auth đổi UID, Membership/tenant bị khóa hoặc xác minh thất bại |
 | Kiểm tra kỹ thuật và kiểm tra thực tế | 🔵 | CI run `41213360712` trên đúng HEAD `6314943` PASS toàn bộ lint, TypeScript, Next build, Functions build và Firestore Rules Emulator; còn chờ smoke test Firebase/Termux bằng tài khoản thật |
 
-       > **Vị trí đang làm:** B2/B6 CI PASS trên nhánh nền tảng; B7 chờ smoke test thực tế. Trên nhánh `feature/employee-card-pin-auth-2026-10-31`, B3/B4 đã có lớp Rules chặn client truy cập credential và login-attempt records, kèm Emulator tests. Callable xác minh PIN, rate limit và cấp Custom Token vẫn chưa triển khai; chưa đánh dấu hoàn thành.
+       > **Vị trí đang làm:** B2/B6 CI PASS trên nhánh nền tảng; B7 chờ smoke test thực tế. Trên nhánh `feature/employee-card-pin-auth-2026-10-31`, B3/B4 đã có lớp Rules chặn client truy cập credential và login-attempt records, kèm Emulator tests; PR #3 Draft đã mở để chạy CI (run `41215522822` đang chạy). Callable xác minh PIN, rate limit và cấp Custom Token vẫn chưa triển khai; chưa đánh dấu hoàn thành.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -46,7 +46,7 @@
 
 - [x] 🟢 B1. Hoàn tất bản thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên trong `AUTHENTICATION_ARCHITECTURE.md`.
 - [x] 🟢 B2. Gateway xác minh Firebase Auth session + Membership; phân loại no-membership/member-disabled/tenant-disabled/membership-invalid/network-error; CI run `41213360712` PASS.
-- [ ] 🟡 B3. Đã bổ sung Rules chặn client đọc/ghi `employeeCredentials`; Emulator tests cho credential và login-attempt records đã viết. Còn thiếu callable xác minh PIN, hash an toàn và rate limit.
+- [ ] 🟡 B3. Đã bổ sung Rules chặn client đọc/ghi `employeeCredentials`; Emulator tests cho credential và login-attempt records đã viết; PR #3 run `41215522822` đang chạy. Còn thiếu callable xác minh PIN, hash an toàn và rate limit.
 - [ ] 🟡 B4. Đã chốt luồng phát hành Firebase Custom Token sau khi xác minh PIN + tenant/Membership active; callable cấp token và client sign-in chưa triển khai.
 - [ ] ⚪ B5. Hợp nhất Membership và Tenant context; role lấy từ dữ liệu có thẩm quyền phía máy chủ.
 - [x] 🟢 B6. App shell đồng bộ Firebase Auth UID, không cấp role fallback; Dashboard hiển thị trạng thái xác minh rõ ràng. CI run `41213360712` PASS.
