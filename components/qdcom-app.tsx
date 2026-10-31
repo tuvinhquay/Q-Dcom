@@ -251,7 +251,7 @@ export function QDcomApp() {
       setTenantAuthorization({
         tenantId: activeTenantId,
         uid,
-        state: "denied",
+        state: getAuthenticationState(error),
         message: error instanceof Error ? error.message : "Không thể xác minh quyền truy cập xưởng.",
       });
     });
