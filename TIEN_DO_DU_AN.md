@@ -2,8 +2,8 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-31 · CI PASS cho Membership state, app shell auth-state và workshop session lifecycle  
-> **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
+> **Cập nhật gần nhất:** 2026-10-31 · B3/B4: cô lập vùng credential nhân viên và bổ sung Rules Emulator tests  
+> **Nhánh làm việc hiện tại:** `feature/employee-card-pin-auth-2026-10-31` (tách từ nhánh nền tảng)  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
 ## 1. Quy ước trạng thái
@@ -28,7 +28,7 @@
 | Sửa mã nguồn / triển khai thực tế | 🟢 | Đã tích hợp trạng thái xác thực rõ ràng vào app shell/Dashboard; thu hồi dữ liệu xưởng khi Auth đổi UID, Membership/tenant bị khóa hoặc xác minh thất bại |
 | Kiểm tra kỹ thuật và kiểm tra thực tế | 🔵 | CI run `41213360712` trên đúng HEAD `6314943` PASS toàn bộ lint, TypeScript, Next build, Functions build và Firestore Rules Emulator; còn chờ smoke test Firebase/Termux bằng tài khoản thật |
 
-      > **Vị trí đang làm:** B2/B6 đã triển khai và CI PASS trên commit `6314943`; B7 chờ smoke test thực tế. Đã bắt đầu B3/B4: rà soát luồng employee card hiện tại, thiết kế credential PIN chỉ lưu server-side, chống dò PIN và phát hành Firebase Custom Token sau khi xác minh Membership. Chưa thay đổi mã nguồn B3/B4 trong bước rà soát thiết kế.
+       > **Vị trí đang làm:** B2/B6 CI PASS trên nhánh nền tảng; B7 chờ smoke test thực tế. Trên nhánh `feature/employee-card-pin-auth-2026-10-31`, B3/B4 đã có lớp Rules chặn client truy cập credential và login-attempt records, kèm Emulator tests. Callable xác minh PIN, rate limit và cấp Custom Token vẫn chưa triển khai; chưa đánh dấu hoàn thành.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -46,8 +46,8 @@
 
 - [x] 🟢 B1. Hoàn tất bản thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên trong `AUTHENTICATION_ARCHITECTURE.md`.
 - [x] 🟢 B2. Gateway xác minh Firebase Auth session + Membership; phân loại no-membership/member-disabled/tenant-disabled/membership-invalid/network-error; CI run `41213360712` PASS.
-- [ ] 🟡 B3. Đang thiết kế đăng nhập thẻ nhân viên có PIN/credential xác minh phía máy chủ; không dùng mã thẻ đơn lẻ làm bằng chứng xác thực.
-- [ ] 🟡 B4. Đang rà soát cách phát hành Firebase Auth session hợp lệ bằng Firebase Custom Token sau khi xác minh PIN + Membership; chưa triển khai.
+- [ ] 🟡 B3. Đã bổ sung Rules chặn client đọc/ghi `employeeCredentials`; Emulator tests cho credential và login-attempt records đã viết. Còn thiếu callable xác minh PIN, hash an toàn và rate limit.
+- [ ] 🟡 B4. Đã chốt luồng phát hành Firebase Custom Token sau khi xác minh PIN + tenant/Membership active; callable cấp token và client sign-in chưa triển khai.
 - [ ] ⚪ B5. Hợp nhất Membership và Tenant context; role lấy từ dữ liệu có thẩm quyền phía máy chủ.
 - [x] 🟢 B6. App shell đồng bộ Firebase Auth UID, không cấp role fallback; Dashboard hiển thị trạng thái xác minh rõ ràng. CI run `41213360712` PASS.
 - [ ] ⚪ B7. Đã bổ sung thu hồi principal/dữ liệu xưởng khi Auth đổi UID, refresh Membership/tenant không hợp lệ hoặc lỗi xác minh; cần kiểm tra runtime và hoàn thiện luồng revoke/expiry.
@@ -329,3 +329,13 @@ Sau mỗi phiên làm việc:
 - Thiết kế cần có: PIN hash bằng thuật toán password hashing phù hợp + salt riêng; xác minh timing-safe; giới hạn thử theo cả tài khoản và nguồn gọi; trạng thái lockout; chỉ cấp token khi tenant active + Membership active + employeeCode khớp; sau sign-in vẫn gọi Membership Gateway để lấy role từ dữ liệu có thẩm quyền.
 - Chưa sửa code hoặc Rules cho B3/B4 trong bước rà soát này; chưa có test Functions Emulator. B3/B4 đang 🟡, chưa đánh dấu PASS.
 - Vị trí tiếp theo: hoàn thiện thiết kế schema/endpoint/test trước khi triển khai callable functions; kiểm tra khả năng test Functions Emulator trong CI. Không yêu cầu PIN hoặc secret thật từ người dùng.
+
+
+### 2026-10-31 — B3/B4: cô lập vùng credential nhân viên
+- Tạo nhánh riêng `feature/employee-card-pin-auth-2026-10-31` từ nhánh nền tảng, không làm việc trên `main`.
+- Sửa `firestore.rules`: thêm match `tenants/{tenantId}/employeeCredentials/{uid}` với deny read/write cho mọi client. Admin SDK trong Cloud Functions có thể truy cập ngoài Firestore Rules.
+- Sửa `tests/security/rules.test.mjs`: seed credential/login-attempt fixture bằng Rules-disabled context; thêm test client không đọc/ghi credential và không đọc/ghi login-attempt records.
+- Cập nhật `AUTHENTICATION_ARCHITECTURE.md`: schema server-only, PIN hashing có salt, constant-time compare, dummy hash khi mã thẻ không tồn tại, rate limit transactionally, tenant/Membership validation trước khi phát token.
+- B3/B4 vẫn 🟡: chưa có callable Functions, chưa có Custom Token flow ở client, chưa có test Functions Emulator và chưa chạy CI cho nhánh mới. Không đánh dấu PASS.
+- Nỗ lực tạo mã nguồn callable trong lượt này bị công cụ chặn; không có mã callable nào được ghi vào repository. Dừng ở lớp Rules/tests có thể kiểm chứng, không tìm cách lách cơ chế chặn.
+- Không thay đổi các luồng kho/Dexie, Google OAuth, Drive Backup, QR, chat hoặc dữ liệu sản phẩm. Không deploy Firebase, không merge PR.
