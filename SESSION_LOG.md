@@ -475,3 +475,37 @@
 2. Nếu test phát hiện sai, sửa Rules/test và xác minh lại.
 3. Sau khi Rules PASS, tiếp tục Membership state machine, auth/session/logout và kiểm thử role/tenant.
 4. Chỉ sau đó chuyển sang callable employee card + PIN và Firebase Custom Token.
+
+
+## Phiên 2026-10-31 · CI PASS Rules và đồng bộ Firebase Auth session
+
+### Đọc lịch sử và xác minh hiện trạng
+- Đọc lại `TIEN_DO_DU_AN.md` và `SESSION_LOG.md` trước khi tiếp tục.
+- Xác minh PR #2 vẫn mở, Draft, chưa merge; nhánh làm việc vẫn là `feature/new-feature-foundation-2026-10-27`.
+- PR head trước thay đổi app shell: `e2a6f11613d3eff9c6c2f06be650ec36515cb88e`.
+- Kiểm tra workflow run `41147559429` trên Rules commit `b397150ac59145272db9e87e33a277e271034e49`: trạng thái `completed / success`; tất cả các bước Validate gồm lint, TypeScript, Next build, Functions build và Firestore Rules Emulator đều PASS.
+
+### Rà soát trọng tâm Phase 2
+- Đọc lại `firestore.rules`, `tests/security/rules.test.mjs`, `lib/services/tenantService.ts`, `lib/auth/authGateway.ts`, `lib/tenancy/authorization.ts`, `lib/firebase.ts`, `components/qdcom-app.tsx`, `components/workshop-dashboard.tsx` và Cloud Functions.
+- Xác nhận Rules mới đã khóa quyền tạo/nâng Membership Admin: Admin hiện hữu chỉ được tạo Worker; bootstrap Admin yêu cầu tenant chưa tồn tại trước và được tạo cùng tenant trong cùng batch; chỉ owner UID được nâng Membership lên Admin.
+- Bộ test Rules xác nhận các trường hợp cấp Worker/Admin, bootstrap tenant, chống tự cấp Admin, cô lập tenant, chống giả UID Worker, ví cá nhân và duyệt phụ phí.
+- Rà soát app shell phát hiện thiếu observer theo dõi thay đổi Firebase Auth session. Khi người dùng sign-out hoặc đổi tài khoản từ một nơi khác, trạng thái Membership cũ có thể chưa bị vô hiệu hóa ngay trong UI.
+
+### Thay đổi source
+- Sửa `components/qdcom-app.tsx`: thêm observer `onAuthStateChanged`; ghi nhận UID Firebase Auth hiện tại và trạng thái Auth đã khôi phục.
+- Membership Gateway chỉ được gọi khi Auth state đã sẵn sàng và Firebase UID trùng UID trong hồ sơ đang mở; khi session mất/UID không khớp, tenant chuyển sang denied thay vì giữ quyền cũ.
+- Giữ nguyên kho local-first, Google OAuth profile, Drive backup, Dexie, QR, chat và dữ liệu sản phẩm.
+- Commit source: `5e640be01250a43851f9ed6e997b29943ba7eae4`.
+- Commit cập nhật bảng tiến độ: `e153487bc6cfedc4a358b7d3fa83def2bf5bdd0a`.
+
+### Giới hạn kiểm thử
+- Rules CI PASS được xác minh trên đúng commit `b397150`.
+- Chưa có kết quả CI cho source commit `5e640be` tại thời điểm ghi nhật ký.
+- Chưa chạy Firebase project thật hoặc Termux; chưa có xác nhận thực tế bằng tài khoản Admin/Worker.
+- Không deploy Firebase production, không merge PR #2, không sửa `main`.
+
+### Vị trí tiếp theo
+1. Xác minh CI cho commit `5e640be` và docs commit mới nhất.
+2. Tiếp tục xử lý state no-membership, disabled member/tenant và thu hồi session; giữ phạm vi Phase 2, không mở rộng tính năng khác.
+3. Sau khi B2/B6/B7 có test phù hợp mới triển khai B3/B4: callable employee card + PIN, rate limit/lockout và Firebase Custom Token.
+4. Cập nhật tiếp cả `TIEN_DO_DU_AN.md` và `SESSION_LOG.md` sau mỗi mốc.
