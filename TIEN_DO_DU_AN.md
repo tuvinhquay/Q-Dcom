@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-31 · CI PASS cho Rules Admin/Membership; bổ sung theo dõi Firebase Auth session trong app shell  
+> **Cập nhật gần nhất:** 2026-10-31 · Bổ sung thu hồi principal/dữ liệu xưởng khi Firebase Auth đổi UID; CI đang chạy  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -28,7 +28,7 @@
 | Sửa mã nguồn / triển khai thực tế | 🟡 | Đã thêm Gateway, tích hợp Dashboard xưởng, khóa Bot/Cộng đồng tenant khi chưa xác minh; tiếp tục hoàn thiện Google/Membership và session |
 | Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI run `41147559429` trên commit Rules `b397150` đã PASS toàn bộ workflow; commit app shell mới `5e640be` đang chờ CI. Chưa có kiểm tra Firebase thật/Termux |
 
-   > **Vị trí đang làm:** B2/B6/B7 — app shell đang được bổ sung đồng bộ Firebase Auth state để tự khóa tenant khi session mất/đổi UID. Google Sign-In và Drive backup vẫn độc lập với Membership. Chưa triển khai B3/B4.
+   > **Vị trí đang làm:** B2/B6/B7 — đã bổ sung đồng bộ Firebase Auth state trong app shell và thu hồi principal/dữ liệu Dashboard xưởng khi session mất/đổi UID; chờ CI cho commit mới nhất. Google Sign-In và Drive backup vẫn độc lập với Membership. Chưa triển khai B3/B4.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -265,3 +265,14 @@ Sau mỗi phiên làm việc:
 - CI cho commit app-shell mới đang chờ kết quả; chưa đánh dấu B2/B6/B7 hoặc Technical PASS.
 - Không thay đổi luồng Google Drive backup, Dexie/IndexedDB, kho local-default, QR, chat hoặc dữ liệu sản phẩm. Không deploy production, không merge PR #2, không sửa `main`.
 - Vị trí tiếp theo: xác minh CI cho `5e640be`; sau đó bổ sung test/state mapping cho no-membership, disabled tenant/member và session revocation; chỉ khi B2/B6/B7 ổn định mới bắt đầu B3/B4 employee card + PIN/Custom Token.
+
+
+### 2026-10-31 — Thu hồi phiên xưởng khi Firebase Auth thay đổi
+- Đọc lại hai tài liệu tiến độ/nhật ký và xác minh PR #2 vẫn Draft, chưa merge.
+- Xác nhận CI run 41149954526 trên commit app shell 5e640be đã completed/success; toàn bộ Validate gồm lint, TypeScript, Next build, Functions build và Firestore Rules Emulator đều PASS. CI docs commit 53e39cad cũng PASS.
+- Rà soát components/workshop-dashboard.tsx: observer Firebase Auth chỉ cập nhật UID/tên, không xóa TenantPrincipal và dữ liệu xưởng khi sign-out/đổi tài khoản; kết nối bất đồng bộ cũng chưa kiểm tra lại UID trước khi kích hoạt principal.
+- Đã sửa observer: khi Firebase UID khác UID của principal hiện tại (bao gồm sign-out/anonymous), xóa principal, PO, sản lượng, phụ phí, thành viên, settings, earnings, chat và kết quả Q-Bot; hiển thị thông báo yêu cầu xác minh lại.
+- Bổ sung kiểm tra Firebase Auth UID hiện tại sau khi Gateway trả principal trong cả luồng kết nối xưởng và tạo xưởng.
+- Source commits: e8953f3, 5346f99, 5341a97, 9eedc74. Workflow Validate mới nhất 41167638066 trên commit 9eedc7462c1cffcf8a74e1e6d60dece095827aa8 đang chạy; chưa đánh dấu Technical PASS.
+- Chưa có test Firebase runtime/Termux hoặc tài khoản Admin/Worker thật. Chưa deploy Firebase production, không merge PR #2, không sửa main.
+- Vị trí tiếp theo: chờ CI đúng HEAD; nếu PASS, chuẩn hóa trạng thái Membership (no-membership, member disabled, tenant disabled, lỗi mạng) và rà soát luồng logout/thu hồi quyền ở mọi điểm truy cập tenant.
