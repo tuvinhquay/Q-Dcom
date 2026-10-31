@@ -97,6 +97,21 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
   const [botAnswers, setBotAnswers] = useState<Record<string, string>>({});
   const [scannerOpen, setScannerOpen] = useState(false);
 
+  function clearTenantSession(message = "") {
+    setPrincipal(null);
+    setOrders([]);
+    setEntries([]);
+    setExtras([]);
+    setMembers([]);
+    setSettings(null);
+    setEarnings(null);
+    setChatMessages([]);
+    setBotAnswers({});
+    setActiveTenantId("local-default");
+    setNotice("");
+    if (message) setError(message);
+  }
+
   useEffect(() => {
     if (!isFirebaseConfigured) return;
     return onAuthStateChanged(getFirebaseAuth(), (user) => {
@@ -104,17 +119,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       setUid(nextUid);
       setSignedInName(user?.displayName ?? displayName);
       if (principal && principal.uid !== nextUid) {
-        setPrincipal(null);
-        setOrders([]);
-        setEntries([]);
-        setExtras([]);
-        setMembers([]);
-        setSettings(null);
-        setEarnings(null);
-        setChatMessages([]);
-        setBotAnswers({});
-        setNotice("");
-        setError("Phiên Firebase Auth đã thay đổi. Hãy xác minh lại quyền thành viên của xưởng.");
+        clearTenantSession("Phiên Firebase Auth đã thay đổi. Hãy xác minh lại quyền thành viên của xưởng.");
       }
     });
   }, [initialUid, displayName, principal]);
@@ -183,8 +188,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       await loadData(active);
       setNotice(`Đã kết nối xưởng · quyền ${active.role === "admin" ? "Quản lý" : "Công nhân"}.`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể kết nối xưởng.");
-      setPrincipal(null);
+      clearTenantSession(reason instanceof Error ? reason.message : "Không thể kết nối xưởng.");
     } finally { setBusy(false); }
   }
 
@@ -206,14 +210,23 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       setActiveTenantId(active.tenantId);
       await loadData(active);
       setNotice(`Đã tạo xưởng. Hãy lưu mã xưởng: ${id}`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Không thể tạo xưởng."); }
+    } catch (reason) { clearTenantSession(reason instanceof Error ? reason.message : "Không thể tạo xưởng."); }
     finally { setBusy(false); }
   }
 
   async function refresh() {
     if (!principal) return;
     setBusy(true); setError("");
-    try { await loadData(principal); } catch (reason) { setError(reason instanceof Error ? reason.message : "Không thể tải dữ liệu xưởng."); }
+    try {
+      const authorization = await authorizeTenantSession(principal.tenantId);
+      if (authorization.principal.uid !== principal.uid || getFirebaseAuth().currentUser?.uid !== principal.uid) {
+        clearTenantSession("Phiên đăng nhập đã thay đổi. Dữ liệu xưởng đã được khóa.");
+        return;
+      }
+      await loadData(authorization.principal);
+    } catch (reason) {
+      clearTenantSession(reason instanceof Error ? reason.message : "Không thể xác minh lại quyền xưởng.");
+    }
     finally { setBusy(false); }
   }
 
