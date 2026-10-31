@@ -605,3 +605,37 @@
 1. Xác minh CI cho HEAD/batch Membership và Rules mới nhất.
 2. Nếu CI xanh, tiếp tục Phase 2 B2/B6/B7, hoàn thiện Membership state và session lifecycle.
 3. Chỉ sau khi luồng hiện tại ổn định mới chuyển B3/B4 employee card + PIN/Custom Token.
+
+
+## Phiên 2026-10-31 · Xác minh CI và chốt batch Membership state / Auth UI
+
+### Xác minh tiến độ trước khi làm
+- Đọc lại `TIEN_DO_DU_AN.md` và `SESSION_LOG.md`; tiếp tục đúng nhánh `feature/new-feature-foundation-2026-10-27`.
+- Xác minh PR #2 vẫn mở ở trạng thái Draft; không merge, không deploy Firebase production, không sửa `main`.
+- Kiểm tra GitHub Actions run `41213360712`, head SHA `631494360cd7e966ba44531ade6625ad42d29865`, trạng thái `completed / success`.
+
+### Kết quả kiểm thử CI
+- Lint: PASS.
+- TypeScript: PASS.
+- Next.js application build: PASS.
+- Firebase Cloud Functions build: PASS.
+- Firestore Rules Emulator: PASS.
+- Tất cả job/step của workflow Validate đều completed/success.
+
+### Đánh giá code sau CI
+- `lib/auth/authGateway.ts`: có `AuthenticationState` và hàm `getAuthenticationState()` phân loại lỗi Membership/tenant/network; không có nhánh fallback tự cấp quyền.
+- `components/qdcom-app.tsx`: chỉ gọi Gateway khi Firebase Auth đã khôi phục và UID phiên khớp UID trong hồ sơ; trạng thái xác minh được giữ theo tenant.
+- `components/workshop-dashboard.tsx`: trạng thái authenticating/loading_memberships/authorized và lỗi được cập nhật trong connect/create/refresh; giao diện có thông báo cho no-membership, member disabled, tenant disabled, network và membership invalid.
+- Đã đối chiếu lại các trạng thái trong bảng tiến độ: B2/B6 🟢 theo CI; B7 🔵 vì kỹ thuật đã kiểm tra đạt nhưng vẫn cần smoke test Firebase/Termux thực tế. Không đánh dấu toàn Phase 2 hoàn thành.
+
+### Phạm vi bảo toàn
+- Không sửa luồng kho local-first, Dexie/IndexedDB, Google OAuth/Drive Backup, QR, chat hoặc dữ liệu sản phẩm trong batch xác minh này.
+- Google Sign-In vẫn chỉ xác minh danh tính; Membership mới quyết định quyền tenant. Quyền Google Drive không thay thế Membership.
+- Không merge PR #2, không deploy production, không sửa `main`.
+
+### Vị trí tiếp theo
+1. Bắt đầu B3/B4: rà soát Cloud Functions, cấu trúc Membership và luồng employee card hiện có.
+2. Thiết kế PIN/credential chỉ lưu phía máy chủ dưới dạng hash có salt và thuật toán phù hợp; thêm rate limit/lockout.
+3. Chỉ khi máy chủ xác minh nhân viên active + Membership active mới phát hành Firebase Custom Token; client đổi token lấy Firebase Auth session rồi Gateway xác minh lại tenant/role.
+4. Thêm test cho PIN sai, thành viên bị khóa, tenant mismatch, giới hạn thử và token issuance; chạy CI trước khi đánh dấu hoàn thành.
+5. Tiếp tục cập nhật glossary khi xuất hiện thuật ngữ mới. Không yêu cầu PIN/secret thật của người dùng.
