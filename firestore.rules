@@ -207,7 +207,12 @@ service cloud.firestore {
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 120
         && request.resource.data.createdAt == request.time;
-      allow read: if isTenantMember(tenantId);
+      // Tenant metadata is visible to an authenticated user with their own
+      // Membership record, even when that Membership is disabled. Business
+      // collections still require an active Membership and active tenant.
+      allow read: if isRealUser()
+        && resource.data.active == true
+        && exists(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid));
       allow update: if isTenantAdmin(tenantId)
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'active'])
