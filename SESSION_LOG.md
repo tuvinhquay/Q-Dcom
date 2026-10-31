@@ -639,3 +639,35 @@
 3. Chỉ khi máy chủ xác minh nhân viên active + Membership active mới phát hành Firebase Custom Token; client đổi token lấy Firebase Auth session rồi Gateway xác minh lại tenant/role.
 4. Thêm test cho PIN sai, thành viên bị khóa, tenant mismatch, giới hạn thử và token issuance; chạy CI trước khi đánh dấu hoàn thành.
 5. Tiếp tục cập nhật glossary khi xuất hiện thuật ngữ mới. Không yêu cầu PIN/secret thật của người dùng.
+
+
+## Phiên 2026-10-31 · Bắt đầu B3/B4 — rà soát đăng nhập thẻ nhân viên + PIN
+
+### Phạm vi và nguyên tắc
+- Chuyển sang batch B3/B4 sau khi B2/B6 có CI PASS.
+- Không mở rộng sang PO, Wallet hoặc Mobile Menu.
+- Không yêu cầu người dùng cung cấp PIN/secret thật; không đưa credential vào client, localStorage hoặc log.
+
+### Rà soát hiện trạng
+- `functions/src/index.ts` hiện chỉ có Firestore triggers để tính lại earnings; chưa có callable function cho đăng nhập nhân viên hoặc cấp Firebase Custom Token.
+- `functions/package.json` dùng Firebase Admin SDK và Firebase Functions v2; chưa có thư viện password hashing chuyên dụng.
+- `types/tenant.ts` và Membership hiện chỉ có employeeCode, role, active và thông tin hiển thị; chưa có credential PIN.
+- `tenantService.ts` xác minh Membership theo Firebase UID và đối chiếu employeeCode; không có luồng xác minh PIN.
+- `firestore.rules` bảo vệ Membership và dữ liệu tenant; cần bổ sung quy tắc từ chối toàn bộ client read/write đối với vùng credential riêng nếu tạo mới.
+- CI hiện chạy lint, TypeScript, Next build, Functions build và Firestore Rules Emulator; chưa thấy kiểm thử callable Functions Emulator trong workflow.
+
+### Thiết kế bảo mật bắt buộc trước khi code
+1. PIN thô không bao giờ được lưu hoặc log. Dùng password hashing có salt riêng và cost phù hợp; không dùng SHA-256 đơn thuần.
+2. Credential đặt trong đường dẫn riêng chỉ Admin SDK truy cập, không nằm trong Membership mà client có thể đọc.
+3. Callable endpoint xác minh tenant active, Membership active, employeeCode đúng và PIN đúng; chỉ sau đó mới cấp Firebase Custom Token gắn UID nhân viên.
+4. Có giới hạn thử/lockout bền vững, chống dò PIN theo tài khoản và nguồn gọi; trả thông báo chung để tránh lộ tài khoản có tồn tại hay không.
+5. Client dùng `signInWithCustomToken`, sau đó vẫn chạy Membership Gateway để lấy tenant/role từ Firestore; Custom Token không tự quyết định role.
+6. Phải có test cho PIN sai, thành viên/tenant bị khóa, mã thẻ sai, rate limit, tenant mismatch và đường dẫn credential bị client truy cập.
+
+### Kết quả và giới hạn
+- Đây là bước audit/thiết kế; chưa sửa source code, Firestore Rules hoặc package dependencies cho B3/B4.
+- B3/B4 được đánh dấu 🟡 trong `TIEN_DO_DU_AN.md`; chưa đánh dấu PASS.
+- Không deploy Firebase, không merge PR #2, không sửa `main`.
+
+### Vị trí tiếp theo
+- Chốt schema credential, callable API, cơ chế rate limit và phương án kiểm thử Functions Emulator/CI; sau đó mới triển khai source theo nhóm nhỏ, kiểm tra trước khi commit.
