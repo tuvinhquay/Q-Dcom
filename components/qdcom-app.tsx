@@ -31,7 +31,7 @@ import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveSt
 import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
 import { getActiveTenantId, subscribeActiveTenantChange } from "@/lib/tenancy/activeTenant";
-import { authorizeTenantSession } from "@/lib/auth/authGateway";
+import { authorizeTenantSession, getAuthenticationState, type AuthenticationState } from "@/lib/auth/authGateway";
 import type { TenantRole } from "@/types/tenant";
 import type { Product, ProductStatus } from "@/types/product";
 
@@ -138,7 +138,7 @@ export function QDcomApp() {
   const [tenantAuthorization, setTenantAuthorization] = useState<{
     tenantId: string;
     uid: string;
-    state: "authorized" | "denied";
+    state: AuthenticationState;
     role?: TenantRole;
     message?: string;
   } | null>(null);
@@ -228,7 +228,7 @@ export function QDcomApp() {
         if (!cancelled) setTenantAuthorization({
           tenantId: activeTenantId,
           uid: "",
-          state: "denied",
+          state: "signed_out",
           message: "Phiên Firebase Auth không tồn tại hoặc không khớp tài khoản đang mở. Hãy đăng nhập lại bằng đúng tài khoản Google.",
         });
       });
@@ -240,7 +240,7 @@ export function QDcomApp() {
         setTenantAuthorization({
           tenantId: activeTenantId,
           uid,
-          state: "denied",
+          state: "error",
           message: "Phiên đăng nhập không khớp với hồ sơ đang mở. Vui lòng đăng nhập lại.",
         });
         return;
