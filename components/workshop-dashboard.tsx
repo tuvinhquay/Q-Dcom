@@ -97,7 +97,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
   const [botAnswers, setBotAnswers] = useState<Record<string, string>>({});
   const [scannerOpen, setScannerOpen] = useState(false);
 
-  function clearTenantSession(message = "") {
+  const clearTenantSession = useCallback((message = "") => {
     setPrincipal(null);
     setOrders([]);
     setEntries([]);
@@ -110,7 +110,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
     setActiveTenantId("local-default");
     setNotice("");
     if (message) setError(message);
-  }
+  }, []);
 
   useEffect(() => {
     if (!isFirebaseConfigured) return;
@@ -122,7 +122,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
         clearTenantSession("Phiên Firebase Auth đã thay đổi. Hãy xác minh lại quyền thành viên của xưởng.");
       }
     });
-  }, [initialUid, displayName, principal]);
+  }, [initialUid, displayName, principal, clearTenantSession]);
 
   useEffect(() => {
     if (!principal) return;
