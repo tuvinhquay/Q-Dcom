@@ -583,3 +583,25 @@
 - Chưa deploy Firebase production; chưa merge PR #2; không sửa `main`.
 - Không thay đổi các luồng kho Dexie/IndexedDB, Google OAuth/Drive backup, QR, chat hoặc dữ liệu sản phẩm.
 - Tiếp tục Phase 2 sau khi CI Rules PASS; không chuyển sang Phase 3 trước khi hoàn thiện Membership/session.
+
+
+## Phiên 2026-10-31 · Tạo cẩm nang thuật ngữ lập trình Q-Dcom
+
+### Mục tiêu
+- Người dùng muốn hiểu thuật ngữ chuyên ngành trong quá trình xây dựng app và yêu cầu tạo file cẩm nang học tập trước khi tiếp tục.
+
+### Đã thực hiện
+- Đọc lại `TIEN_DO_DU_AN.md`, `SESSION_LOG.md`, `README.md`, `package.json`, `firebase.json`, `firestore.rules` và `AUTHENTICATION_ARCHITECTURE.md` trên nhánh hiện tại.
+- Xác nhận nhánh `feature/new-feature-foundation-2026-10-27`; HEAD lúc bắt đầu phiên: `7e658faaaf629f1cbc67c73e497aa1c829ceafc2`.
+- Tạo `CAM_NANG_THUAT_NGU_QDCOM.md`: thuật ngữ nền tảng; JS/TS/React/Next; database; Firebase/Auth/Security; Tenant/Membership/PO/sản lượng/ví; PWA/QR/Drive; testing/Git/GitHub/CI-CD; trạng thái Auth; file và lệnh chính.
+- Bổ sung ví dụ thực tế trong Q-Dcom, các cặp thuật ngữ dễ nhầm và cách giải thích thuật ngữ cho các phiên sau.
+
+### Giới hạn
+- Đây là thay đổi tài liệu; chưa sửa mã nguồn app, Firestore Rules hoặc cấu hình Firebase.
+- Chưa deploy production, không merge PR #2, không sửa `main`.
+- CI cho commit tài liệu mới chưa được xác minh tại thời điểm ghi nhận.
+
+### Vị trí tiếp theo
+1. Xác minh CI cho HEAD/batch Membership và Rules mới nhất.
+2. Nếu CI xanh, tiếp tục Phase 2 B2/B6/B7, hoàn thiện Membership state và session lifecycle.
+3. Chỉ sau khi luồng hiện tại ổn định mới chuyển B3/B4 employee card + PIN/Custom Token.
