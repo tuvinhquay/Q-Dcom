@@ -7,7 +7,7 @@ import { AlertTriangle, Camera, Clock3, Factory, MessageCircle, Plus, RefreshCw,
 import { getFirebaseAuth, isFirebaseConfigured, signInWithGooglePopup, signOutFirebaseUser } from "@/lib/firebase";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { createTenant } from "@/lib/services/tenantService";
-import { authorizeTenantSession } from "@/lib/auth/authGateway";
+import { authorizeTenantSession, getAuthenticationState, type AuthenticationState } from "@/lib/auth/authGateway";
 import { setActiveTenantId } from "@/lib/tenancy/activeTenant";
 import {
   addWorkshopWorker, answerWorkshopQBot, deleteWorkshopPurchaseOrder, getMyEarnings, getWorkshopSettings,
@@ -65,6 +65,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
   const [settings, setSettings] = useState<TenantOperationsSettings | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [error, setError] = useState("");
+  const [accessState, setAccessState] = useState<AuthenticationState>("signed_out");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
@@ -117,6 +118,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
     return onAuthStateChanged(getFirebaseAuth(), (user) => {
       const nextUid = user?.isAnonymous ? "" : user?.uid ?? "";
       setUid(nextUid);
+      if (!nextUid) setAccessState("signed_out");
       setSignedInName(user?.displayName ?? displayName);
       if (principal && principal.uid !== nextUid) {
         clearTenantSession("Phiên Firebase Auth đã thay đổi. Hãy xác minh lại quyền thành viên của xưởng.");
@@ -173,8 +175,9 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
   }, [selectedOrderId]);
 
   async function connectTenant() {
-    setBusy(true); setError(""); setNotice("");
+    setBusy(true); setError(""); setNotice(""); setAccessState("authenticating");
     try {
+      setAccessState("loading_memberships");
       const authorization = await authorizeTenantSession(tenantIdInput.trim(), employeeCode.trim());
       const active = authorization.principal;
       if (!getFirebaseAuth().currentUser || getFirebaseAuth().currentUser?.uid !== active.uid) {
@@ -183,11 +186,13 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       setChatMessages([]);
       setBotAnswers({});
       setPrincipal(active);
+      setAccessState("authorized");
       setActiveTenantId(active.tenantId);
       setTenantIdInput(active.tenantId);
       await loadData(active);
       setNotice(`Đã kết nối xưởng · quyền ${active.role === "admin" ? "Quản lý" : "Công nhân"}.`);
     } catch (reason) {
+      setAccessState(getAuthenticationState(reason));
       clearTenantSession(reason instanceof Error ? reason.message : "Không thể kết nối xưởng.");
     } finally { setBusy(false); }
   }
@@ -195,7 +200,7 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
   async function makeTenant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!uid) return;
-    setBusy(true); setError(""); setNotice("");
+    setBusy(true); setError(""); setNotice(""); setAccessState("authenticating");
     try {
       const id = await createTenant({ name: tenantName, uid, displayName: signedInName || workerName || "Quản lý xưởng", employeeCode });
       setTenantIdInput(id);
@@ -207,10 +212,11 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
       setChatMessages([]);
       setBotAnswers({});
       setPrincipal(active);
+      setAccessState("authorized");
       setActiveTenantId(active.tenantId);
       await loadData(active);
       setNotice(`Đã tạo xưởng. Hãy lưu mã xưởng: ${id}`);
-    } catch (reason) { clearTenantSession(reason instanceof Error ? reason.message : "Không thể tạo xưởng."); }
+    } catch (reason) { setAccessState(getAuthenticationState(reason)); clearTenantSession(reason instanceof Error ? reason.message : "Không thể tạo xưởng."); }
     finally { setBusy(false); }
   }
 
@@ -218,13 +224,16 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
     if (!principal) return;
     setBusy(true); setError("");
     try {
+      setAccessState("loading_memberships");
       const authorization = await authorizeTenantSession(principal.tenantId);
       if (authorization.principal.uid !== principal.uid || getFirebaseAuth().currentUser?.uid !== principal.uid) {
         clearTenantSession("Phiên đăng nhập đã thay đổi. Dữ liệu xưởng đã được khóa.");
         return;
       }
       await loadData(authorization.principal);
+      setAccessState("authorized");
     } catch (reason) {
+      setAccessState(getAuthenticationState(reason));
       clearTenantSession(reason instanceof Error ? reason.message : "Không thể xác minh lại quyền xưởng.");
     }
     finally { setBusy(false); }
@@ -368,10 +377,10 @@ export function WorkshopDashboard({ initialUid, displayName = "", products }: Pr
   return <section className="workshop-shell">
     <header className="workshop-heading glass"><div className="workshop-icon"><Factory /></div><div><div className="eyebrow">Q-DCOM · WORKSHOP OPERATIONS</div><h1>Quản lý sản lượng xưởng</h1><p>PO, sản lượng và phụ phí được phân vùng theo mã xưởng.</p></div><button className="secondary-btn" type="button" onClick={() => void refresh()} disabled={!principal || busy}><RefreshCw size={15} /> Làm mới</button></header>
     {!uid ? <section className="workshop-card glass"><h2>Đăng nhập Google</h2><p>Cần tài khoản Google đã xác thực để tham gia xưởng và phân quyền theo thành viên Firebase.</p><button className="primary-btn" type="button" disabled={busy} onClick={() => { setBusy(true); void signInWithGooglePopup().then(({user}) => { setUid(user.uid); setSignedInName(user.displayName ?? user.email ?? ""); }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Đăng nhập thất bại.")).finally(() => setBusy(false)); }}>Đăng nhập Google</button></section>
-    : !principal ? <div className="workshop-setup-grid">
+    : !principal ? <>{accessState !== "signed_out" && <section className="workshop-card glass" role="status"><h2>{accessState === "loading_memberships" ? "Đang xác minh thành viên" : accessState === "no_membership" ? "Tài khoản chưa thuộc xưởng" : accessState === "membership_disabled" ? "Thành viên đã bị khóa" : accessState === "tenant_disabled" ? "Xưởng đang bị khóa" : accessState === "network_error" ? "Không thể kết nối máy chủ" : accessState === "membership_invalid" ? "Thông tin thành viên không hợp lệ" : accessState === "authorized" ? "Đã xác minh quyền truy cập" : "Cần xác minh lại quyền truy cập"}</h2><p>{accessState === "loading_memberships" ? "Đang kiểm tra Membership và trạng thái xưởng. Vui lòng chờ." : error || "Hãy kiểm tra tài khoản Google, mã xưởng và trạng thái thành viên."}</p></section>}<div className="workshop-setup-grid">
       <form className="workshop-card glass" onSubmit={(event) => { event.preventDefault(); void connectTenant(); }}><h2>Tham gia xưởng</h2><p>Nhập mã xưởng và mã thẻ nhân viên đã được quản lý đăng ký. Thẻ được đối chiếu với UID Google để không thể dùng mã thẻ đơn lẻ giả mạo tài khoản.</p><label>Mã xưởng<input value={tenantIdInput} onChange={(event) => setTenantIdInput(event.target.value)} required /></label><label>Mã thẻ nhân viên<input value={employeeCode} onChange={(event) => setEmployeeCode(event.target.value)} required /></label><button className="primary-btn" disabled={busy || !tenantIdInput.trim()}>Kết nối xưởng</button></form>
       <form className="workshop-card glass" onSubmit={(event) => void makeTenant(event)}><h2>Tạo xưởng mới</h2><p>Người tạo được gán vai trò Admin đầu tiên.</p><label>Tên xưởng<input value={tenantName} onChange={(event) => setTenantName(event.target.value)} required maxLength={120} /></label><label>Mã thẻ quản lý<input value={employeeCode} onChange={(event) => setEmployeeCode(event.target.value)} required maxLength={64} /></label><button className="primary-btn" disabled={busy || !tenantName.trim()}>Tạo xưởng</button></form>
-    </div> : <>
+    </div></> : <>
       <div className="workshop-tenant-strip glass"><span><strong>{principal.role === "admin" ? "QUẢN LÝ / ADMIN" : "CÔNG NHÂN / WORKER"}</strong><small>Mã xưởng: {principal.tenantId}</small></span><button className="quiet-btn" type="button" onClick={() => { setPrincipal(null); setChatMessages([]); setBotAnswers({}); setActiveTenantId("local-default"); setOrders([]); setEntries([]); setExtras([]); setMembers([]); setEarnings(null); }}>Đổi xưởng</button><button className="quiet-btn" type="button" onClick={() => { void signOutFirebaseUser().then(() => { setPrincipal(null); setChatMessages([]); setBotAnswers({}); setUid(""); setActiveTenantId("local-default"); }); }}>Đăng xuất Google</button></div>
       {principal.role === "admin" ? <>
         <div className="workshop-stat-grid"><div className="workshop-stat glass"><span>Đơn hàng PO</span><strong>{orders.length}</strong></div><div className="workshop-stat glass"><span>Chờ duyệt sản lượng</span><strong>{entries.filter((item) => item.status === "pending").length}</strong></div><div className="workshop-stat glass"><span>Chờ duyệt phụ phí</span><strong>{extras.length}</strong></div><div className="workshop-stat glass"><span>Thành viên xưởng</span><strong>{members.length}</strong></div></div>
