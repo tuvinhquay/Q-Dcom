@@ -299,3 +299,12 @@ Sau mỗi phiên làm việc:
 - **Chưa tự deploy Firebase production.** Trong Phase 1–2, chỉ cập nhật file chuẩn trong GitHub và kiểm thử Emulator; gom bản Rules ổn định để người dùng cập nhật Firebase một lần sau khi Phase 1–2 hoàn tất.
 - Nếu phát hiện lỗ hổng bảo mật nghiêm trọng hoặc thay đổi Rules bắt buộc phải áp dụng sớm, phải báo người dùng trước, nêu rõ lý do/phạm vi và chờ xác nhận trước khi deploy.
 - Trước mỗi lần cập nhật Firebase, đối chiếu đúng commit/branch đã PASS, sao lưu Rules hiện hành và chỉ deploy Rules bằng Firebase CLI; không deploy các dịch vụ khác ngoài phạm vi được duyệt.
+
+
+### 2026-10-31 — Tạo cẩm nang thuật ngữ lập trình Q-Dcom
+- Tạo `CAM_NANG_THUAT_NGU_QDCOM.md`, giải thích tiếng Việt các thuật ngữ lập trình, công nghệ và nghiệp vụ thực tế trong Q-Dcom.
+- Nội dung gồm: lập trình căn bản; JavaScript/TypeScript/React/Next.js; database và lưu trữ; Firebase/Auth/Security; Tenant/Membership/PO/sản lượng/ví; PWA/QR/Google Drive; kiểm thử/GitHub/CI-CD; trạng thái Auth; bản đồ file và lệnh thường dùng.
+- Có ví dụ theo Q-Dcom và phần phân biệt các cặp thuật ngữ dễ nhầm. Cẩm nang là tài liệu sống, sẽ bổ sung khi dự án phát triển.
+- Chỉ thay đổi tài liệu; không sửa app, Rules, cấu hình Firebase hoặc dữ liệu.
+- PR #2 vẫn Draft; không merge, không deploy production, không sửa `main`.
+- Vị trí quay lại: Phase 2 — xác minh CI mới nhất cho Membership/Rules/session batch, sau đó tiếp tục B2/B6/B7. Chưa chuyển B3/B4 cho đến khi nhóm hiện tại ổn định.
