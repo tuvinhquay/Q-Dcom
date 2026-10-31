@@ -60,6 +60,7 @@ try {
   const workerA = auth("worker-a");
   const workerB = auth("worker-b");
   const disabledWorker = auth("disabled-worker");
+  const notInvited = auth("not-invited");
   const disabledTenantAdmin = auth("admin-x");
 
   // Existing tenant admins may add Workers, but cannot grant Admin to another UID.
@@ -93,7 +94,12 @@ try {
   });
   await assertSucceeds(bootstrapBatch.commit());
 
-  // Inactive Membership and disabled tenant must deny reads even with a valid Google Auth session.
+  // A user can read only their own Membership path to distinguish not-invited from disabled.
+  await assertSucceeds(getDoc(doc(notInvited, "tenants", "tenant-a", "members", "not-invited")));
+  await assertFails(getDoc(doc(notInvited, "tenants", "tenant-a")));
+  await assertSucceeds(getDoc(doc(disabledWorker, "tenants", "tenant-a", "members", "disabled-worker")));
+  await assertSucceeds(getDoc(doc(disabledWorker, "tenants", "tenant-a")));
+  // Inactive Membership and disabled tenant must deny business-data reads even with a valid Google Auth session.
   await assertFails(getDoc(doc(disabledWorker, "tenants", "tenant-a", "purchaseOrders", "po-a")));
   await assertFails(getDoc(doc(disabledTenantAdmin, "tenants", "tenant-disabled")));
   await assertSucceeds(getDoc(doc(workerA, "tenants", "tenant-a", "purchaseOrders", "po-a")));
