@@ -8,12 +8,14 @@ import {
   TrendingUp, Utensils, Upload, Users, Video, X, IdCard, UserRound, BriefcaseBusiness,
 } from "lucide-react";
 import Image from "next/image";
+import { onAuthStateChanged } from "firebase/auth";
 import Link from "next/link";
 import type { ChangeEvent, CSSProperties, FormEvent, ReactNode } from "react";
 import { startTransition, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { BackgroundVideo } from "@/components/background-video";
 import { CommunityChat } from "@/components/community-chat";
+import { WorkshopDashboard } from "@/components/workshop-dashboard";
 import { GlassmorphismAnimationBackground } from "@/components/glassmorphism-animation-background";
 import { GoogleDriveLoginButton } from "@/components/google-drive-login-button";
 import { ProductCard } from "@/components/products/ProductCard";
@@ -23,14 +25,17 @@ import { SearchBar } from "@/components/search/SearchBar";
 import { parseQBotQuery } from "@/lib/bot/qBotParser";
 import { copyDefaultVocabulary, type BotIntent, type BotVocabulary } from "@/lib/bot/vocabulary";
 import { qdcomDB, type QDcomMember } from "@/lib/db/qdcomDB";
-import { isFirebaseConfigured, signOutFirebaseUser, type GoogleAuthSession } from "@/lib/firebase";
+import { getFirebaseAuth, isFirebaseConfigured, signOutFirebaseUser, type GoogleAuthSession } from "@/lib/firebase";
 import { parseBackup, parseSharePayload, serializeBackup, createSharePayload } from "@/lib/sync/qdcomSync";
 import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveStorageQuota } from "@/lib/sync/googleDriveBackup";
 import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
 import { adjustProductQuantity, deleteProduct, listProducts, saveProduct } from "@/lib/services/productService";
+import { getActiveTenantId, subscribeActiveTenantChange } from "@/lib/tenancy/activeTenant";
+import { authorizeTenantSession, getAuthenticationState, type AuthenticationState } from "@/lib/auth/authGateway";
+import type { TenantRole } from "@/types/tenant";
 import type { Product, ProductStatus } from "@/types/product";
 
-type PageKey = "inventory" | "bot" | "community" | "reports" | "about" | "privacy" | "settings";
+type PageKey = "inventory" | "bot" | "community" | "reports" | "workshop" | "about" | "privacy" | "settings";
 type MenuItem =
   | { id: PageKey; label: string; icon: typeof Package; preview?: false }
   | { id: "food" | "productivity"; label: string; icon: typeof Package; preview: true };
@@ -53,6 +58,7 @@ const navGroups: { label: string; items: MenuItem[] }[] = [
       { id: "bot", label: "Tra cứu @q", icon: MessageCircle },
       { id: "community", label: "Cộng đồng chat", icon: Users },
       { id: "reports", label: "Tổng quan kho", icon: BarChart3 },
+      { id: "workshop", label: "Sản lượng xưởng", icon: TrendingUp },
     ],
   },
   {
@@ -76,6 +82,7 @@ const pageNames: Record<PageKey, string> = {
   bot: "Tra cứu @q",
   community: "Cộng đồng chat",
   reports: "Tổng quan kho",
+  workshop: "Quản lý sản lượng xưởng",
   about: "Giới thiệu Q-Dcom",
   privacy: "Chính sách bảo mật dữ liệu",
   settings: "Cài đặt chung",
@@ -125,6 +132,16 @@ function Badge({ status }: { status: ProductStatus }) {
 export function QDcomApp() {
   const [page, setPage] = useState<PageKey>("inventory");
   const [products, setProducts] = useState<Product[]>([]);
+  const [activeTenantId, setActiveTenantId] = useState("local-default");
+  const [firebaseAuthUid, setFirebaseAuthUid] = useState<string | null>(null);
+  const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);
+  const [tenantAuthorization, setTenantAuthorization] = useState<{
+    tenantId: string;
+    uid: string;
+    state: AuthenticationState;
+    role?: TenantRole;
+    message?: string;
+  } | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [registrationDraft, setRegistrationDraft] = useState({ memberId: "", fullName: "", specialty: "", avatar: "" });
@@ -173,7 +190,14 @@ export function QDcomApp() {
       setUserProfile(readUserProfile());
       setMessages(savedMessages.length ? savedMessages : [{ id: Date.now(), role: "assistant", text: "Chào bạn! Mình là Q-Dcom Bot. Nhập mã mẫu, tên hàng hoặc vị trí kệ để bắt đầu tra cứu." }]);
     });
-    void Promise.all([listProducts(), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()])
+    const initialTenantId = getActiveTenantId();
+    startTransition(() => setActiveTenantId(initialTenantId));
+    const unsubscribeTenant = subscribeActiveTenantChange((tenantId) => {
+      setActiveTenantId(tenantId);
+      setSelectedId(null);
+      void listProducts(tenantId).then(setProducts).catch((error: unknown) => notify(error instanceof Error ? error.message : "Không thể đổi dữ liệu sang xưởng đã chọn."));
+    });
+    void Promise.all([listProducts(initialTenantId), qdcomDB.botVocabulary.get("main"), qdcomDB.members.toArray()])
       .then(([loadedProducts, storedVocabulary, storedMembers]) => {
         setProducts(loadedProducts);
         setMembers(storedMembers);
@@ -183,7 +207,56 @@ export function QDcomApp() {
       })
       .catch((error: unknown) => notify(error instanceof Error ? error.message : "Không thể mở cơ sở dữ liệu ngoại tuyến."))
       .finally(() => setReady(true));
+    return unsubscribeTenant;
   }, []);
+  useEffect(() => {
+    if (!isFirebaseConfigured) {
+      queueMicrotask(() => setFirebaseAuthReady(true));
+      return;
+    }
+    return onAuthStateChanged(getFirebaseAuth(), (user) => {
+      setFirebaseAuthUid(user?.isAnonymous ? null : user?.uid ?? null);
+      setFirebaseAuthReady(true);
+    });
+  }, []);
+  useEffect(() => {
+    const uid = userProfile?.firebaseUid;
+    if (activeTenantId === "local-default" || !firebaseAuthReady) return;
+    let cancelled = false;
+    if (!uid || firebaseAuthUid !== uid) {
+      queueMicrotask(() => {
+        if (!cancelled) setTenantAuthorization({
+          tenantId: activeTenantId,
+          uid: "",
+          state: "signed_out",
+          message: "Phiên Firebase Auth không tồn tại hoặc không khớp tài khoản đang mở. Hãy đăng nhập lại bằng đúng tài khoản Google.",
+        });
+      });
+      return () => { cancelled = true; };
+    }
+    void authorizeTenantSession(activeTenantId).then(({ principal }) => {
+      if (cancelled) return;
+      if (principal.uid !== uid) {
+        setTenantAuthorization({
+          tenantId: activeTenantId,
+          uid,
+          state: "error",
+          message: "Phiên đăng nhập không khớp với hồ sơ đang mở. Vui lòng đăng nhập lại.",
+        });
+        return;
+      }
+      setTenantAuthorization({ tenantId: activeTenantId, uid, state: "authorized", role: principal.role });
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setTenantAuthorization({
+        tenantId: activeTenantId,
+        uid,
+        state: getAuthenticationState(error),
+        message: error instanceof Error ? error.message : "Không thể xác minh quyền truy cập xưởng.",
+      });
+    });
+    return () => { cancelled = true; };
+  }, [activeTenantId, firebaseAuthReady, firebaseAuthUid, userProfile?.firebaseUid]);
   useEffect(() => {
     if (messages.length) window.localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-80)));
     messageEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -196,8 +269,8 @@ export function QDcomApp() {
     const timeout = window.setTimeout(() => {
       setDriveSyncStatus("syncing");
       const sync = driveSyncQueue.current.then(
-        () => syncBackupToGoogleDrive(accessToken, contents),
-        () => syncBackupToGoogleDrive(accessToken, contents),
+        () => syncBackupToGoogleDrive(accessToken, contents, activeTenantId),
+        () => syncBackupToGoogleDrive(accessToken, contents, activeTenantId),
       );
       driveSyncQueue.current = sync;
       void sync.then(() => {
@@ -212,7 +285,7 @@ export function QDcomApp() {
       });
     }, 500);
     return () => window.clearTimeout(timeout);
-  }, [members, products, ready, userProfile, vocabulary]);
+  }, [activeTenantId, members, products, ready, userProfile, vocabulary]);
   useEffect(() => {
     if (!userProfile || userProfile.firebaseUid || userProfile.googleSub) return;
     const warnBeforeExit = (event: BeforeUnloadEvent) => {
@@ -226,6 +299,19 @@ export function QDcomApp() {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
   }, []);
 
+  const tenantAuthorizationState = activeTenantId === "local-default"
+    ? "local_only"
+    : tenantAuthorization?.tenantId === activeTenantId && tenantAuthorization.uid === (userProfile?.firebaseUid ?? "")
+      ? tenantAuthorization.state
+      : "loading";
+  const tenantAuthorizationMessage = tenantAuthorization?.tenantId === activeTenantId
+    ? tenantAuthorization.message ?? ""
+    : "";
+  const currentTenantRole: TenantRole = activeTenantId === "local-default"
+    ? "worker"
+    : tenantAuthorizationState === "authorized" && tenantAuthorization?.role
+      ? tenantAuthorization.role
+      : "worker";
   const activeProducts = products.filter((product) => product.status !== "hidden");
   const shownProducts = activeProducts.filter((product) => {
     const text = query.trim().toLocaleLowerCase("vi");
@@ -278,8 +364,12 @@ export function QDcomApp() {
   }
   function askBot(text: string) {
     const clean = text.trim(); if (!clean) return;
+    if (activeTenantId !== "local-default" && tenantAuthorizationState !== "authorized") {
+      notify("Chưa xác minh Membership của xưởng. Không thể tra cứu dữ liệu theo quyền tenant.");
+      return;
+    }
     appendMessage("user", clean);
-    const answer = parseQBotQuery(clean, products, vocabulary);
+    const answer = parseQBotQuery(clean, products, vocabulary, { tenantId: activeTenantId, role: currentTenantRole, uid: userProfile?.firebaseUid ?? userProfile?.peerId });
     appendMessage("assistant", answer.message, answer.products.map((product) => product.id));
     setBotInput(""); setPage("bot");
   }
@@ -679,6 +769,8 @@ export function QDcomApp() {
       </aside>
       <section className="main-panel"><header className="topbar glass"><div className="mobile-wordmark">Q-<b>Dcom</b></div><div className="breadcrumb">Không gian kho <ChevronRight size={13} /><strong>{pageNames[page]}</strong></div><div className="topbar-actions"><span className={`connection-pill drive-connection ${driveSyncStatus}`} title={driveSyncMessage || undefined}><i />{driveSyncStatus === "syncing" ? "Đang đồng bộ Drive" : driveSyncStatus === "synced" ? "Đã lưu trên Drive" : driveSyncStatus === "error" ? "Lỗi đồng bộ Drive" : driveConnected ? "Drive đã kết nối" : "Drive chưa kết nối"}</span><span className="topbar-divider" /><ProfileAvatar profile={userProfile} /></div></header>
         <div className="main-content">
+          {page === "workshop" && <WorkshopDashboard initialUid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} />}
+
           {page === "inventory" && <>
             <div className="page-heading"><div><div className="eyebrow"><Activity /> Trung tâm vận hành · Hôm nay</div><h1>Mẫu hàng & kho</h1><p>Theo dõi số lượng, tình trạng và vị trí lưu trữ.</p></div><button className="primary-btn" onClick={() => openEditor()}><Plus /> Thêm mẫu hàng</button></div>
             <div className="stat-grid"><StatCard label="Mẫu đang quản lý" value={String(activeProducts.length).padStart(2,"0")} foot="Mẫu hàng trong danh mục kho" icon={<Package />} /><StatCard label="Tổng tồn kho" value={String(quantityTotal)} foot="Đơn vị đang lưu tại kho" icon={<Boxes />} /><StatCard label="Sắp hết hàng" value={String(lowStock.length).padStart(2,"0")} foot="Mẫu còn từ 1 đến 4 sản phẩm" icon={<CircleAlert />} /><StatCard label="Vị trí lưu trữ" value={String(locationCount).padStart(2,"0")} foot="Kệ có mẫu đang lưu" icon={<MapPin />} /></div>
@@ -689,7 +781,8 @@ export function QDcomApp() {
             </section>
           </>}
 
-          {page === "bot" && <>
+          {page === "bot" && activeTenantId !== "local-default" && tenantAuthorizationState !== "authorized" && <section className="community-login-required glass"><ShieldCheck /><div><strong>{tenantAuthorizationState === "loading" ? "Đang xác minh quyền thành viên…" : "Chưa được xác minh quyền truy cập xưởng"}</strong><p>{tenantAuthorizationMessage || "Không mở tra cứu theo tenant trước khi Membership hợp lệ."}</p></div></section>}
+          {page === "bot" && (activeTenantId === "local-default" || tenantAuthorizationState === "authorized") && <>
             <div className="page-heading"><div><div className="eyebrow"><Sparkles /> Trợ lý tra cứu nội bộ</div><h1>Hỏi Q-Dcom</h1><p>Tìm theo mã mẫu, tên, thương hiệu, tồn kho hoặc vị trí kệ.</p></div><span className="connection-pill"><i />Trợ lý sẵn sàng</span></div>
             <div className="chat-layout"><section className="chat-window glass"><div className="chat-header"><div className="bot-mark"><Bot /></div><div className="chat-heading"><strong>Q-Dcom Bot <span>@q</span></strong><small><i /> Đang tra cứu dữ liệu kho hiện tại</small></div><button className="quiet-btn" onClick={() => setMessages([{ id: Date.now(), role: "assistant", text: "Cuộc trò chuyện mới. Bạn muốn tra cứu mẫu hàng nào?" }])}>Làm mới</button></div>
               <div className="chat-messages"><div className="chat-date">HÔM NAY</div>{messages.map((message) => <div className={`message ${message.role}`} key={message.id}>{message.role === "assistant" && <div className="message-bot-icon"><Bot /></div>}<div><div className="message-bubble">{message.text}{message.role === "assistant" && message.productIds?.map((id) => { const product = products.find((item) => item.id === id); return product ? <div className="rich-result" key={id}><div className="rich-result-main"><ProductImage product={product} className="rich-result-image" /><div><div className="rich-result-title">{product.name}</div><div className="rich-result-id">ID: {product.id} · {product.brand}</div><div className="rich-result-meta"><span>{product.color}</span><span>{product.quantity} sản phẩm</span><span>{product.location}</span></div></div></div><button className="primary-btn" onClick={() => setSelectedId(product.id)}>Xem chi tiết <ArrowRight /></button></div> : null; })}</div><div className="message-time">{message.role === "user" ? "Bạn" : "Q-Dcom"} · vừa xong</div></div></div>)}<div ref={messageEnd} /></div>
@@ -697,10 +790,13 @@ export function QDcomApp() {
             </section><aside className="chat-aside"><section className="aside-panel glass"><h3>Truy vấn nhanh</h3><div className="query-list">{["@q nike màu đen id 183t1o4","@q 183t1o4 còn mấy đôi","@q 184y99 ở đâu","@q mẫu sắp hết hàng"].map((item) => <button className="query-chip" key={item} onClick={() => askBot(item)}>{item}<ArrowRight /></button>)}</div></section><section className="aside-panel glass"><h3>Q-Dcom hiểu gì?</h3><p className="aside-note">Bot đối chiếu mã hàng, thương hiệu, màu sắc và từ khóa trong danh mục. Câu hỏi về số lượng hoặc vị trí sẽ có câu trả lời ngắn gọn.</p></section><section className="aside-panel glass"><div className="aside-status"><ShieldCheck size={14} /> Tra cứu theo dữ liệu kho hiện tại</div></section></aside></div>
           </>}
 
-          {page === "community" && <>
+          {page === "community" && activeTenantId !== "local-default" && tenantAuthorizationState !== "authorized" && <section className="community-login-required glass"><ShieldCheck /><div><strong>{tenantAuthorizationState === "loading" ? "Đang xác minh quyền thành viên…" : "Chưa được xác minh quyền truy cập xưởng"}</strong><p>{tenantAuthorizationMessage || "Đang kiểm tra Membership từ phiên Firebase Auth."}</p><button className="primary-btn" onClick={() => setPage("workshop")}>Mở quản lý xưởng <ArrowRight /></button></div></section>}
+          {page === "community" && (activeTenantId === "local-default" || tenantAuthorizationState === "authorized") && <>
             <div className="page-heading"><div><div className="eyebrow"><Users /> Kết nối thành viên</div><h1>Cộng đồng chat</h1><p>Tìm kiếm ID/QR, tạo nhóm và trao đổi tin nhắn. @q chỉ tra cứu dữ liệu IndexedDB cục bộ.</p></div></div>
-            {userProfile.firebaseUid
-              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} />
+            {activeTenantId !== "local-default"
+              ? <section className="community-login-required glass"><ShieldCheck /><div><strong>Cộng đồng đã được cô lập theo mã xưởng</strong><p>Để tránh gửi nhầm tin nhắn sang cộng đồng dùng chung cũ, hãy sử dụng phòng chat tenant bên trong mục Sản lượng xưởng.</p><button className="primary-btn" onClick={() => setPage("workshop")}>Mở cộng đồng xưởng <ArrowRight /></button></div></section>
+              : userProfile.firebaseUid
+              ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} tenantId={activeTenantId} role={currentTenantRole} />
               : <section className="community-login-required glass"><LockKeyhole /><div><strong>Cần đăng nhập bằng Google</strong><p>Tài khoản ID cá nhân chỉ hoạt động trên thiết bị này. Đăng nhập Google để sử dụng danh bạ, nhóm và chat Firebase.</p>{isFirebaseConfigured && <GoogleDriveLoginButton label="Đăng nhập Google để kết nối" onAuthorized={handleGoogleAuthorization} onError={notify} />}</div></section>}
           </>}
 
