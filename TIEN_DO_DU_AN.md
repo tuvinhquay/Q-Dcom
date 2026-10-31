@@ -2,7 +2,7 @@
 
 > File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-31 · Chuẩn hóa trạng thái Membership, khóa tenant và thu hồi phiên; CI đang chạy  
+> **Cập nhật gần nhất:** 2026-10-31 · Sửa Rules self-read Membership và đồng bộ quy trình cập nhật Firebase Rules  
 > **Nhánh làm việc dự kiến:** `feature/new-feature-foundation-2026-10-27`  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -289,3 +289,13 @@ Sau mỗi phiên làm việc:
 - CI mới nhất tại thời điểm ghi nhận: run `41169076083` trên commit `96342c59bf46b58b807acf4eb47e76560f9d13e0` đang in_progress; chưa đánh dấu Technical PASS. Các run trung gian không thay thế kiểm tra đúng HEAD.
 - Chưa có Firebase runtime/Termux hoặc tài khoản Admin/Worker thực tế. Không triển khai employee card + PIN/Custom Token trong batch này; chờ Membership/session ổn định.
 - Vị trí tiếp theo: kiểm tra CI đúng HEAD và xử lý lỗi nếu có; sau đó rà soát trạng thái hiển thị app shell và kiểm thử thực tế trước khi chuyển B3/B4.
+
+
+## Quy trình quản lý và đồng bộ Firebase Rules
+
+- **Nguồn chuẩn duy nhất:** file gốc `firestore.rules` tại thư mục gốc repository. `firebase.json` đã trỏ `firestore.rules` tới đúng file này; không tạo bản Rules thứ hai gây lệch phiên bản.
+- Mọi thay đổi cấu trúc dữ liệu, quyền Admin/Worker, Membership, PO, sản lượng, phụ phí hoặc earnings phải cập nhật file `firestore.rules` và `tests/security/rules.test.mjs` cùng một đợt.
+- CI phải chạy Firestore Rules Emulator và PASS trước khi coi thay đổi Rules là hoàn tất.
+- **Chưa tự deploy Firebase production.** Trong Phase 1–2, chỉ cập nhật file chuẩn trong GitHub và kiểm thử Emulator; gom bản Rules ổn định để người dùng cập nhật Firebase một lần sau khi Phase 1–2 hoàn tất.
+- Nếu phát hiện lỗ hổng bảo mật nghiêm trọng hoặc thay đổi Rules bắt buộc phải áp dụng sớm, phải báo người dùng trước, nêu rõ lý do/phạm vi và chờ xác nhận trước khi deploy.
+- Trước mỗi lần cập nhật Firebase, đối chiếu đúng commit/branch đã PASS, sao lưu Rules hiện hành và chỉ deploy Rules bằng Firebase CLI; không deploy các dịch vụ khác ngoài phạm vi được duyệt.
