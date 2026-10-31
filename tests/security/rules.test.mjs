@@ -18,17 +18,24 @@ try {
     const stamp = new Date("2026-10-27T00:00:00.000Z");
     await setDoc(doc(db, "tenants", "tenant-a"), { name: "Xưởng A", ownerUid: "admin-a", active: true, createdAt: stamp });
     await setDoc(doc(db, "tenants", "tenant-b"), { name: "Xưởng B", ownerUid: "admin-b", active: true, createdAt: stamp });
+    await setDoc(doc(db, "tenants", "tenant-disabled"), { name: "Xưởng đã khóa", ownerUid: "admin-x", active: false, createdAt: stamp });
     for (const [tenantId, uid, role] of [
       ["tenant-a", "admin-a", "admin"],
       ["tenant-a", "worker-a", "worker"],
       ["tenant-a", "worker-b", "worker"],
       ["tenant-a", "manager-a", "admin"],
       ["tenant-b", "admin-b", "admin"],
+      ["tenant-a", "disabled-worker", "worker"],
+      ["tenant-disabled", "admin-x", "admin"],
     ]) {
       await setDoc(doc(db, "tenants", tenantId, "members", uid), {
         tenantId, uid, role, displayName: uid, employeeCode: uid, active: true, createdAt: stamp,
       });
     }
+    await setDoc(doc(db, "tenants", "tenant-a", "members", "disabled-worker"), {
+      tenantId: "tenant-a", uid: "disabled-worker", role: "worker", displayName: "Disabled Worker",
+      employeeCode: "DW-01", active: false, createdAt: stamp,
+    });
     await setDoc(doc(db, "tenants", "tenant-a", "purchaseOrders", "po-a"), {
       tenantId: "tenant-a", poCode: "PO-A", productName: "Áo", totalQuantity: 100, dueAt: "2026-11-01",
     });
@@ -52,6 +59,8 @@ try {
   const adminA = auth("admin-a");
   const workerA = auth("worker-a");
   const workerB = auth("worker-b");
+  const disabledWorker = auth("disabled-worker");
+  const disabledTenantAdmin = auth("admin-x");
 
   // Existing tenant admins may add Workers, but cannot grant Admin to another UID.
   await assertSucceeds(setDoc(doc(adminA, "tenants", "tenant-a", "members", "new-worker"), {
@@ -84,6 +93,9 @@ try {
   });
   await assertSucceeds(bootstrapBatch.commit());
 
+  // Inactive Membership and disabled tenant must deny reads even with a valid Google Auth session.
+  await assertFails(getDoc(doc(disabledWorker, "tenants", "tenant-a", "purchaseOrders", "po-a")));
+  await assertFails(getDoc(doc(disabledTenantAdmin, "tenants", "tenant-disabled")));
   await assertSucceeds(getDoc(doc(workerA, "tenants", "tenant-a", "purchaseOrders", "po-a")));
   await assertFails(getDoc(doc(workerA, "tenants", "tenant-b", "purchaseOrders", "po-b")));
   await assertSucceeds(getDoc(doc(workerA, "tenants", "tenant-a", "earnings", "worker-a")));
