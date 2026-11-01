@@ -21,7 +21,7 @@ type EmployeeCredential = {
 };
 
 function normalizeCode(value: unknown): string {
-  return typeof value === "string" ? value.trim().toUpperCase() : "";
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function validPin(value: unknown): value is string {
@@ -66,7 +66,9 @@ async function consumeAttempt(key: string): Promise<{ allowed: boolean; lockedUn
       lockedUntil: nextLock,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    return { allowed: true };
+    return nextAttempts >= MAX_FAILED_ATTEMPTS
+      ? { allowed: false, lockedUntil: nextLock }
+      : { allowed: true };
   });
 }
 
@@ -109,7 +111,7 @@ export const loginWithEmployeeCard = onCall({ maxInstances: 10 }, async (request
   const tenantId = typeof request.data?.tenantId === "string" ? request.data.tenantId.trim() : "";
   const employeeCode = normalizeCode(request.data?.employeeCode);
   const pin = request.data?.pin;
-  if (!/^[A-Za-z0-9_-]{3,80}$/.test(tenantId) || !/^[A-Z0-9_-]{2,32}$/.test(employeeCode) || !validPin(pin)) {
+  if (!/^[A-Za-z0-9_-]{3,80}$/.test(tenantId) || !/^[A-Za-z0-9_-]{2,32}$/.test(employeeCode) || !validPin(pin)) {
     throw new HttpsError("invalid-argument", "Thông tin đăng nhập không hợp lệ.");
   }
 
@@ -142,7 +144,6 @@ export const loginWithEmployeeCard = onCall({ maxInstances: 10 }, async (request
   if (!valid) {
     // Run a cost-equivalent hash when the card/credential does not exist.
     if (members.size !== 1) await hashPin(pin, Buffer.alloc(16, 7));
-    await recordFailure(attemptKey);
     throw new HttpsError("unauthenticated", "Mã thẻ hoặc PIN không chính xác, hoặc tài khoản không hoạt động.");
   }
 
