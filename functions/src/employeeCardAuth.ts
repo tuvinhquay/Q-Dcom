@@ -1,10 +1,8 @@
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
-import { promisify } from "node:util";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
-const scrypt = promisify(scryptCallback);
 const PIN_PATTERN = /^\d{6}$/;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
@@ -33,7 +31,7 @@ function opaqueKey(value: string): string {
 }
 
 async function hashPin(pin: string, salt: Buffer): Promise<Buffer> {
-  return await scrypt(pin, salt, HASH_BYTES, SCRYPT_OPTIONS) as Buffer;
+  return await new Promise<Buffer>((resolve, reject) => {\n    scryptCallback(pin, salt, HASH_BYTES, SCRYPT_OPTIONS, (error, derivedKey) => {\n      if (error) reject(error);\n      else resolve(derivedKey as Buffer);\n    });\n  });
 }
 
 async function matchesPin(pin: string, saltHex: string, expectedHex: string): Promise<boolean> {
@@ -69,24 +67,6 @@ async function consumeAttempt(key: string): Promise<{ allowed: boolean; lockedUn
     return nextAttempts >= MAX_FAILED_ATTEMPTS
       ? { allowed: false, lockedUntil: nextLock }
       : { allowed: true };
-  });
-}
-
-async function recordFailure(key: string): Promise<void> {
-  const db = getFirestore();
-  const ref = db.collection("employeeLoginAttempts").doc(key);
-  await db.runTransaction(async (tx) => {
-    const snapshot = await tx.get(ref);
-    const data = snapshot.data();
-    const attempts = Number(data?.failedAttempts ?? 0);
-    const lockedUntil = Number(data?.lockedUntil ?? 0);
-    if (lockedUntil > Date.now()) return;
-    const next = Math.max(attempts, 1);
-    tx.set(ref, {
-      failedAttempts: next,
-      lockedUntil: next >= MAX_FAILED_ATTEMPTS ? Date.now() + LOCK_DURATION_MS : 0,
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
   });
 }
 
