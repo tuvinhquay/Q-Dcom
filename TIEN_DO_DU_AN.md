@@ -1,8 +1,6 @@
-# Q-Dcom — BẢNG THEO DÕI TIẾN ĐỘ CÔNG VIỆC
-
-> File này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
+| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI run `41293642164` đang chạy trên commit `400c538`; chưa có kết quả build Functions sau khi thêm callable. Firebase runtime/Termux và regression thực tế còn chờ |này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
-> **Cập nhật gần nhất:** 2026-10-31 · B3/B4: cô lập vùng credential nhân viên và bổ sung Rules Emulator tests  
+> ****Cập nhật gần nhất:** 2026-11-01 · B3/B4: triển khai callable PIN và Custom Token, đang chờ CIng credential nhân viên và bổ sung Rules Emulator tests  
 > **Nhánh làm việc hiện tại:** `feature/employee-card-pin-auth-2026-10-31` (tách từ nhánh nền tảng)  
 > **Phạm vi hiện tại:** xử lý các vấn đề phát hiện trong Phase 1 và Phase 2, đồng thời cải tiến có kiểm soát; bảo toàn các chức năng cũ.
 
@@ -339,3 +337,4 @@ Sau mỗi phiên làm việc:
 - B3/B4 vẫn 🟡: chưa có callable Functions, chưa có Custom Token flow ở client, chưa có test Functions Emulator và chưa chạy CI cho nhánh mới. Không đánh dấu PASS.
 - Nỗ lực tạo mã nguồn callable trong lượt này bị công cụ chặn; không có mã callable nào được ghi vào repository. Dừng ở lớp Rules/tests có thể kiểm chứng, không tìm cách lách cơ chế chặn.
 - Không thay đổi các luồng kho/Dexie, Google OAuth, Drive Backup, QR, chat hoặc dữ liệu sản phẩm. Không deploy Firebase, không merge PR.
+\n\n### 2026-11-01 — Bổ sung callable xác thực thẻ nhân viên (đang chờ CI)\n- Tạo `functions/src/employeeCardAuth.ts` với `setEmployeeCardPin` (Admin active cấp/đặt lại PIN cho Worker active cùng tenant) và `loginWithEmployeeCard` (xác minh credential server-side).\n- PIN yêu cầu đúng 6 chữ số; lưu scrypt + salt ngẫu nhiên, không lưu PIN rõ; so sánh hash constant-time.\n- Login chỉ tra Membership trong tenant được gửi, xác minh tenant/Membership active và mã thẻ khớp; Custom Token cấp cho UID của Membership, không nhận UID/role từ client.\n- Bộ đếm thử đăng nhập dùng transaction, khóa sau 5 lần trong 15 phút; key là SHA-256 của tenant + mã thẻ + IP, không lưu PIN.\n- Export callable từ `functions/src/index.ts`. Commits: `c75ef54`, `400c538`, `aca69ad`.\n- CI mới nhất run `41293642164` trên commit `400c538` đang chạy; chưa đánh dấu build PASS.\n- Còn thiếu: callable Functions Emulator tests; quyết định/bật App Check; client `signInWithCustomToken` + Gateway; xác minh schema mã nhân viên cũ; test lockout/concurrency; kiểm thử Firebase test project. Không deploy production/merge PR.\n- Vị trí tiếp theo: đọc CI logs và sửa mọi lỗi build trước khi viết test callable.\n
