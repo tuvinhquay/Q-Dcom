@@ -46,27 +46,27 @@ async function matchesPin(pin: string, saltHex: string, expectedHex: string): Pr
   }
 }
 
-async function consumeAttempt(key: string): Promise<{ allowed: boolean; lockedUntil?: number }> {
-  const db = getFirestore();
-  const ref = db.collection("employeeLoginAttempts").doc(key);
-  return db.runTransaction(async (tx) => {
+async function isAttemptLocked(key: string): Promise<boolean> {
+  const snapshot = await getFirestore().collection("employeeLoginAttempts").doc(key).get();
+  const lockedUntil = Number(snapshot.data()?.lockedUntil ?? 0);
+  return lockedUntil > Date.now();
+}
+
+async function recordFailure(key: string): Promise<void> {
+  const ref = getFirestore().collection("employeeLoginAttempts").doc(key);
+  await getFirestore().runTransaction(async (tx) => {
     const snapshot = await tx.get(ref);
     const now = Date.now();
     const data = snapshot.data();
-    const lockedUntil = Number(data?.lockedUntil ?? 0);
-    if (lockedUntil > now) return { allowed: false, lockedUntil };
+    const previousLock = Number(data?.lockedUntil ?? 0);
+    if (previousLock > now) return;
 
-    const failedAttempts = Number(data?.failedAttempts ?? 0);
-    const nextAttempts = failedAttempts + 1;
-    const nextLock = nextAttempts >= MAX_FAILED_ATTEMPTS ? now + LOCK_DURATION_MS : 0;
+    const failedAttempts = Number(data?.failedAttempts ?? 0) + 1;
     tx.set(ref, {
-      failedAttempts: nextAttempts,
-      lockedUntil: nextLock,
+      failedAttempts,
+      lockedUntil: failedAttempts >= MAX_FAILED_ATTEMPTS ? now + LOCK_DURATION_MS : 0,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    return nextAttempts >= MAX_FAILED_ATTEMPTS
-      ? { allowed: false, lockedUntil: nextLock }
-      : { allowed: true };
   });
 }
 
@@ -97,8 +97,7 @@ export const loginWithEmployeeCard = onCall({ maxInstances: 10 }, async (request
 
   const ip = request.rawRequest.ip ?? "unknown";
   const attemptKey = opaqueKey([tenantId, employeeCode, ip].join("|"));
-  const attempt = await consumeAttempt(attemptKey);
-  if (!attempt.allowed) {
+  if (await isAttemptLocked(attemptKey)) {
     throw new HttpsError("resource-exhausted", "Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.");
   }
 
@@ -124,6 +123,7 @@ export const loginWithEmployeeCard = onCall({ maxInstances: 10 }, async (request
   if (!valid) {
     // Run a cost-equivalent hash when the card/credential does not exist.
     if (members.size !== 1) await hashPin(pin, Buffer.alloc(16, 7));
+    await recordFailure(attemptKey);
     throw new HttpsError("unauthenticated", "Mã thẻ hoặc PIN không chính xác, hoặc tài khoản không hoạt động.");
   }
 
