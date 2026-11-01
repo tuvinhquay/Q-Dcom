@@ -129,3 +129,4 @@ Tên file có thể điều chỉnh sau khi kiểm tra import graph; không xóa
 - Regression kho/Dexie/QR/chat/backup PASS.
 - Kiểm tra thực tế trên điện thoại bằng tài khoản Admin và Worker PASS.
 - Chưa deploy production/merge main cho đến khi người dùng xác nhận.
+\n\n## 11. Cập nhật triển khai callable (2026-11-01 — chờ CI)\n- Đã thêm `functions/src/employeeCardAuth.ts` và export `loginWithEmployeeCard`, `setEmployeeCardPin` từ `functions/src/index.ts`.\n- PIN hiện áp dụng mặc định đúng 6 chữ số; scrypt + salt; counter transaction khóa 15 phút sau 5 lần thử. Cần xác nhận chính sách PIN này trước khi đưa vào sử dụng thực tế.\n- Custom Token chỉ mang claim `authMethod: employee_card`; tenant/role vẫn phải được tải và xác minh lại qua Membership Gateway.\n- Chưa có callable Emulator tests, chưa enforce App Check, chưa tích hợp client. Không xem đây là hoàn tất B3/B4.\n
