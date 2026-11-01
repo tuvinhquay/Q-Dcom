@@ -139,3 +139,5 @@ export const onOperationRateChanged = onDocumentWritten(
     await Promise.all([...workers].map((uid) => rebuildWorkerEarnings(tenantId, uid)));
   },
 );
+
+export { loginWithEmployeeCard, setEmployeeCardPin } from "./employeeCardAuth.js";
