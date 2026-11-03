@@ -711,3 +711,30 @@
 - Kiểm tra Rules xác nhận credential nested path bị deny client read/write; collection `employeeLoginAttempts` top-level cũng đang bị default-deny do không có allow rule tương ứng.
 - B3/B4 vẫn 🟡. Chưa có callable Functions Emulator tests, App Check enforcement hoặc client `signInWithCustomToken`; PIN 6 chữ số vẫn là thiết kế hiện tại, chưa chốt để phát hành.
 - Không deploy production, không merge PR, không sửa `main`; giữ nguyên các tính năng cũ.
+
+
+## Phiên 2026-11-03 · Thay đổi quyết định xác thực: bỏ PIN nhân viên
+
+### Quyết định mới
+- Theo yêu cầu người dùng, loại bỏ hoàn toàn phương thức đăng nhập bằng mã thẻ + PIN. Công nhân và Admin xác thực bằng tài khoản Google qua Firebase Auth.
+- Firebase UID là danh tính chính chủ; Membership trong đúng Tenant xác định role và quyền. Mã nhân viên chỉ là mã hồ sơ nội bộ, Tenant ID chỉ để định tuyến/chọn xưởng; không yếu tố nào trong hai giá trị này tự chứng minh danh tính.
+- Không phát hành Firebase Custom Token từ mã nhân viên, không tạo PIN và không duy trì credential PIN.
+
+### Thay đổi mã nguồn
+- Xóa `functions/src/employeeCardAuth.ts`, gồm callable `loginWithEmployeeCard` và `setEmployeeCardPin`.
+- Gỡ export hai callable khỏi `functions/src/index.ts`; giữ nguyên các trigger tính earnings hiện có.
+- Giữ nguyên Firebase Auth + Membership Gateway và các kiểm tra Tenant/UID/role hiện hữu.
+- Cập nhật `AUTHENTICATION_ARCHITECTURE.md` theo luồng Google Auth → Firebase UID → Membership → TenantPrincipal → Firestore Rules/Cloud Functions.
+
+### Kiểm tra và giới hạn
+- CI trước thay đổi có lỗi lint do cú pháp trong module PIN; module đó đã được xóa thay vì sửa tiếp vì phương thức PIN bị loại bỏ theo quyết định mới.
+- Chưa có CI kết quả trên commit gỡ PIN; không đánh dấu B3/B4 PASS.
+- Chưa chạy Firebase thật/Termux với tài khoản Admin và Worker.
+- Còn phải rà soát mọi tham chiếu PIN/employee card cũ trong tài liệu, Rules tests và workflow; xác định trải nghiệm Admin liên kết Firebase UID của công nhân để tránh nhập nhầm.
+- Không merge PR, không sửa main và không deploy production.
+
+### Vị trí tiếp theo
+1. Rà soát tham chiếu PIN còn sót và cập nhật bảng tiến độ hiện hành, giữ lịch sử cũ nhưng đánh dấu thiết kế PIN đã bị thay thế.
+2. Chạy CI đầy đủ trên nhánh hiện tại; sửa mọi lỗi phát sinh.
+3. Rà soát server-side Membership checks trong callable nghiệp vụ và Firestore Rules.
+4. Sau Technical PASS mới thiết kế/kiểm thử luồng Admin liên kết tài khoản Google UID cho Worker.
