@@ -1,132 +1,110 @@
-# Q-Dcom — Thiết kế Authentication Gateway và Membership tập trung
+# Kiến trúc xác thực và phân quyền — Q-Dcom
 
-> Trạng thái: Bản thiết kế triển khai cho nhóm B. Chưa phải xác nhận mã nguồn đã được sửa hoặc hệ thống production đã an toàn.
-> Nhánh: `feature/new-feature-foundation-2026-10-27`
+> Quyết định kiến trúc hiện hành: **không sử dụng PIN hoặc đăng nhập bằng mã thẻ nhân viên**. Mọi người dùng cần xác thực bằng tài khoản Google/Firebase Auth chính chủ; máy chủ xác minh Membership để quyết định quyền truy cập Tenant.
 
-## 1. Mục tiêu
+## 1. Nguyên tắc bắt buộc
 
-Hợp nhất Google OAuth và đăng nhập thẻ nhân viên thành hai phương thức đi vào **một Firebase Authentication session và một Membership/Authorization pipeline**. Không có đường đăng nhập riêng nào được tự cấp role hoặc tự mở dữ liệu tenant.
+1. Firebase Auth xác minh danh tính người dùng và tạo phiên đăng nhập đáng tin cậy.
+2. Firebase UID là định danh chính. Không dùng tên, email hiển thị, mã nhân viên, localStorage hoặc Tenant ID làm bằng chứng xác thực.
+3. Sau đăng nhập, Q-Dcom chỉ cấp quyền vào Tenant khi Membership tương ứng tồn tại, có UID và tenantId khớp, trạng thái active và role hợp lệ.
+4. Tenant ID chỉ là thông tin định tuyến/tìm kiếm. Biết Tenant ID không đồng nghĩa có quyền truy cập.
+5. Role luôn lấy từ Membership có thẩm quyền; client không được tự gửi role để cấp quyền.
+6. Firestore Security Rules phải kiểm tra người gọi đã đăng nhập và có Membership active trong đúng Tenant. Cloud Functions phải kiểm tra `request.auth.uid` và Membership phía server trước mọi thao tác đặc quyền.
+7. Khi tài khoản đăng xuất, đổi UID, Membership bị khóa hoặc Tenant bị khóa, ứng dụng phải xóa principal và dữ liệu tenant khỏi phiên hiện tại.
+8. Không có PIN, mật khẩu nội bộ Q-Dcom, Custom Token đăng nhập thẻ hoặc credential xác thực riêng của nhân viên.
 
-## 2. Quy tắc không thương lượng
-
-1. Firebase Auth xác định danh tính (UID); Membership Firestore xác định tenant, role và trạng thái thành viên.
-2. Role chỉ được lấy từ dữ liệu tin cậy phía máy chủ. Không tin role, tenantId hay employeeCode do UI/localStorage/chat tự khai báo.
-3. Google đăng nhập thành công không đồng nghĩa đã được cấp quyền vào một tenant.
-4. Google Drive OAuth/backup consent không đồng nghĩa là membership xưởng.
-5. Mã thẻ nhân viên không phải mật khẩu. Phải xác minh thêm PIN/mật khẩu bằng server và phát hành Firebase Custom Token.
-6. Local ID/offline profile chỉ được giữ cho tương thích dữ liệu cũ; tuyệt đối không cấp quyền truy cập Firestore/tenant.
-7. Lỗi hoặc chưa tải xong Membership phải là trạng thái `loading`/`denied`, không được mặc định thành Worker.
-8. UI ẩn chức năng không thay thế Firestore Rules và kiểm tra quyền trong Cloud Functions.
-
-## 3. Kiến trúc phiên đăng nhập
+## 2. Luồng đăng nhập và vào xưởng
 
 ```text
-Google OAuth ───────┐
-                    ├─> Firebase Auth session ─> Authentication Gateway
-Employee Card + PIN ┘                             |
-                                                   v
-                                      Load trusted Membership(s)
-                                                   |
-                           ┌───────────────────────┼──────────────────────┐
-                           v                       v                      v
-                        loading                 authorized               denied
-                                                  |
-                                    TenantPrincipal (uid, tenantId, role)
-                                                  |
-                              UI + service layer + Firestore Rules
+Người dùng
+   |
+   v
+Đăng nhập Google qua Firebase Auth
+   |
+   v
+Firebase xác minh tài khoản và cấp Auth session / ID token
+   |
+   v
+Q-Dcom lấy Firebase UID từ phiên hiện tại
+   |
+   v
+Chọn hoặc xác định Tenant cần truy cập
+   |
+   v
+Server / Membership Gateway kiểm tra:
+- Tenant tồn tại và active
+- tenants/{tenantId}/members/{uid} tồn tại
+- membership.uid == Firebase UID
+- membership.tenantId == Tenant đang truy cập
+- membership.active == true
+- role là admin hoặc worker
+   |
+   +---- Không hợp lệ ---> Từ chối, không tải dữ liệu tenant
+   |
+   v
+Tạo TenantPrincipal từ Membership đáng tin cậy
+   |
+   v
+Firestore Rules / Cloud Functions tiếp tục kiểm tra quyền từng thao tác
 ```
 
-## 4. Luồng Google OAuth
+## 3. Dữ liệu định danh và Membership
 
-1. Gọi Firebase Google provider.
-2. Kiểm tra Firebase User không anonymous và provider là `google.com`.
-3. Chờ Firebase Auth state được khôi phục/ổn định.
-4. Đọc danh sách Membership theo UID từ nguồn server-authoritative.
-5. Với từng membership: xác minh tenant tồn tại, tenant active, membership active, role thuộc `admin | worker`.
-6. Nếu có một tenant hợp lệ: chọn tenant theo chính sách đã lưu nhưng phải xác minh lại membership trước khi mở dữ liệu.
-7. Nếu có nhiều tenant: hiển thị bộ chọn tenant chỉ từ danh sách server trả về.
-8. Nếu chưa có membership: hiển thị trạng thái chưa được thêm vào xưởng hoặc luồng tạo xưởng; không vào dashboard tenant.
-9. Chỉ sau khi có principal hợp lệ mới khởi tạo các subscription/dịch vụ tenant.
+Đường dẫn Membership hiện hành:
 
-## 5. Luồng đăng nhập thẻ nhân viên
+`tenants/{tenantId}/members/{firebaseUid}`
 
-### Dữ liệu đề xuất
-- Membership công khai: tenantId, uid, role, displayName, employeeCode, active.
-- Credential riêng server-only tại `tenants/{tenantId}/employeeCredentials/{uid}`: tenantId, uid, employeeCode đã chuẩn hóa, salt, pinHash, active, failedAttempts, lockedUntil, updatedAt.
-- Bộ đếm chống dò PIN đặt riêng tại `employeeLoginAttempts/{key}`; key phải là giá trị băm từ tenant + mã thẻ + nguồn gọi, không lưu PIN.
-- Firestore Rules phải từ chối toàn bộ client read/write trên `employeeCredentials` và `employeeLoginAttempts`; chỉ Admin SDK trong Cloud Functions được thao tác.
-- Dùng password hashing có salt riêng và cost phù hợp (ví dụ scrypt); so sánh hash theo cách constant-time. Với mã thẻ không tồn tại cần thực hiện phép hash giả có cost tương đương để giảm rò rỉ qua thời gian phản hồi.
-- Không lưu PIN dạng rõ, không dùng SHA-256 đơn thuần và không ghi PIN/hash/token vào log.
+Các trường quan trọng:
+- `tenantId`: Tenant sở hữu Membership.
+- `uid`: Firebase UID chính chủ, phải trùng document ID.
+- `role`: `admin` hoặc `worker`, do luồng quản trị hợp lệ ghi.
+- `active`: trạng thái cho phép tham gia.
+- `employeeCode`: mã nhân viên để nhận diện/quản lý nội bộ, không phải mật khẩu.
+- `displayName`: tên hiển thị.
 
-### Quy trình
-1. Người dùng nhập mã xưởng, mã thẻ và PIN.
-2. Client gọi HTTPS Callable Function `loginWithEmployeeCard`.
-3. Function kiểm tra input, App Check (khi app đã cấu hình), giới hạn tần suất theo tenant + mã thẻ + IP/nguồn gọi và trạng thái khóa.
-4. Function tìm credential trong đúng tenant; xác minh PIN bằng scrypt có salt riêng và so sánh constant-time. Mã thẻ không tồn tại vẫn chạy hash giả.
-5. Function kiểm tra tenant active và Membership active, employeeCode/UID/tenantId khớp nhau.
-6. Chỉ khi hợp lệ, Admin SDK phát hành Firebase Custom Token cho UID đã gắn với Membership; token không chứa role do client cung cấp.
-7. Client đăng nhập bằng `signInWithCustomToken`; sau đó chạy chung Membership Gateway như Google.
-8. Nếu thất bại, trả thông báo chung; không tiết lộ mã thẻ có tồn tại hay không. Counter phải được cập nhật transactionally để tránh nhiều request song song vượt ngưỡng.
+Mọi truy vấn tenant phải ràng buộc theo Tenant ID và UID đã xác minh. Không cho phép client tự tạo Membership hoặc tự nâng role.
 
-### Quản trị credential
-- Chỉ Admin đã được xác thực và có membership active mới được thêm nhân viên hoặc cấp/đặt lại PIN qua callable function.
-- Mã nhân viên phải duy nhất trong tenant.
-- Không cho Admin thay đổi UID/role bằng payload tùy ý; function tự xác minh caller.
-- Có quy trình khóa/mở khóa và thu hồi credential.
-- Không log PIN, token, hash hoặc dữ liệu xác thực nhạy cảm.
+## 4. Quy trình Admin thêm công nhân
 
-## 6. Authentication Gateway và trạng thái UI
+1. Công nhân đăng nhập Google lần đầu để Firebase Auth tạo/nhận diện tài khoản.
+2. Hệ thống lấy Firebase UID từ phiên đã xác thực.
+3. Admin thêm đúng UID đó vào Membership của Tenant, gán role Worker và mã nhân viên.
+4. Khi công nhân chọn Tenant, Gateway kiểm tra Membership. Chỉ khi hợp lệ mới cho vào khu vực xưởng.
+5. Nếu công nhân chưa đăng nhập hoặc Admin chưa gắn đúng UID, hệ thống từ chối truy cập và hướng dẫn liên hệ Admin.
 
-Định nghĩa trạng thái duy nhất:
-- `signed_out`: chưa có Firebase user.
-- `authenticating`: OAuth/custom-token đang xử lý.
-- `loading_memberships`: Firebase user có nhưng đang tải Membership.
-- `tenant_selection`: có nhiều Membership hợp lệ.
-- `authorized`: có TenantPrincipal hợp lệ.
-- `no_membership`: đã đăng nhập nhưng chưa được thêm vào xưởng.
-- `membership_disabled`: membership hoặc tenant bị khóa.
-- `error`: lỗi xác thực/đọc quyền; không cấp quyền dự phòng.
+**Điểm cần hoàn thiện trong sản phẩm:** trải nghiệm mời/liên kết tài khoản công nhân với Membership cần rõ ràng, tránh Admin nhập nhầm UID. Có thể xây luồng yêu cầu tham gia/chờ duyệt sau khi nền tảng Auth ổn định; không được thay bằng mã nhân viên đơn thuần.
 
-Không sử dụng role mặc định `worker` để che trạng thái chưa xác định.
+## 5. Quy tắc bảo mật
 
-## 7. Tổ chức mã nguồn dự kiến
+- Không tin dữ liệu identity/role/tenant do giao diện gửi lên nếu chưa đối chiếu với Firebase Auth và Firestore.
+- Cloud Functions đặc quyền bắt buộc xác minh `request.auth`, Tenant active, Membership active, UID, tenantId và role.
+- Firestore Rules từ chối truy cập chéo tenant; Worker chỉ được truy cập dữ liệu cá nhân/những nghiệp vụ được phép.
+- Không ghi ID token, refresh token hoặc dữ liệu bí mật vào log.
+- Khi thu hồi Membership, quyền truy cập phải bị từ chối ở lần đọc/ghi tiếp theo; giao diện phải xóa dữ liệu đang hiển thị.
+- Google Drive OAuth là quyền riêng biệt, không thay thế Firebase Auth hoặc Membership.
 
-- `lib/auth/authTypes.ts`: trạng thái phiên và kiểu principal.
-- `lib/auth/authGateway.ts`: điều phối Firebase Auth + Membership.
-- `lib/auth/authSession.ts`: helper đăng nhập Google/thẻ và đăng xuất.
-- `lib/services/membershipService.ts`: đọc Membership và xác minh tenant.
-- `functions/src/auth.ts`: callable functions cấp credential, đăng nhập thẻ, khóa/đặt lại PIN.
-- `functions/src/index.ts`: export callable functions.
-- `firestore.rules`: chặn client đọc credential; membership/tenant chỉ theo đúng ma trận quyền.
-- `components/qdcom-app.tsx` và `components/workshop-dashboard.tsx`: dùng chung gateway, bỏ luồng xác thực song song sau khi chuyển đổi an toàn.
+## 6. Trạng thái triển khai
 
-Tên file có thể điều chỉnh sau khi kiểm tra import graph; không xóa file/luồng cũ trước khi migration và regression chứng minh không còn phụ thuộc.
+- Đã có Firebase Auth session và Membership Gateway trong `lib/auth/authGateway.ts` / `lib/services/tenantService.ts`.
+- Đã có kiểm tra trạng thái Tenant, Membership, UID, tenantId và role.
+- Đã có trạng thái lỗi rõ ràng; không tự fallback Worker khi chưa xác minh.
+- Đã có Firestore Rules và Emulator tests cho các ranh giới quyền quan trọng.
+- Đã gỡ thử nghiệm callable đăng nhập PIN và cấp PIN; không triển khai Custom Token cho thẻ nhân viên.
+- Chưa coi toàn bộ Auth hoàn tất: còn kiểm thử CI trên commit mới, rà soát callable nghiệp vụ khác, kiểm thử tài khoản Admin/Worker thật và trải nghiệm liên kết UID công nhân.
 
-## 8. Kiểm thử bắt buộc
+## 7. Kiểm thử bắt buộc
 
-- Google user có Membership active.
-- Google user không có Membership.
-- Membership inactive, tenant inactive, role không hợp lệ.
-- Một user thuộc nhiều tenant.
-- Employee card + PIN hợp lệ cấp đúng UID và role từ Membership.
-- Sai PIN, mã thẻ không tồn tại, tenant không tồn tại; phản hồi không tiết lộ credential.
-- Thử brute force/rate limit/lockout.
-- Worker không thể tự cấp Admin, đổi tenantId hoặc UID.
-- Admin chỉ thêm thành viên trong tenant của mình.
-- Client không đọc được credential collection.
-- Sau đăng xuất, phiên Firebase bị thu hồi ở client; dữ liệu tenant không còn được truy cập.
-- Legacy local ID vẫn mở được dữ liệu offline được phép nhưng không truy cập Firestore tenant.
+- Google/Firebase Auth session hợp lệ và không hợp lệ.
+- Người chưa đăng nhập không đọc/ghi dữ liệu Tenant.
+- Người đã đăng nhập nhưng chưa có Membership bị từ chối.
+- Membership inactive hoặc Tenant inactive bị từ chối.
+- UID khác, Tenant ID khác hoặc document Membership không khớp bị từ chối.
+- Worker không thể tự nâng role Admin hoặc truy cập tenant khác.
+- Đổi tài khoản/đăng xuất/thu hồi Membership phải xóa principal và dữ liệu tenant khỏi UI.
+- Admin và Worker thực tế chỉ nhìn thấy đúng dữ liệu/quyền của mình.
 
-## 9. Trạng thái triển khai Employee Card
-- Đã bổ sung Firestore Rules từ chối client read/write tại `tenants/{tenantId}/employeeCredentials/{uid}`.
-- Đã thêm Rules Emulator tests cho việc client không đọc/ghi được credential và login-attempt records.
-- Đây mới là lớp bảo vệ dữ liệu. Callable Functions xác minh PIN, cấp Custom Token, rate limit và luồng UI chưa được triển khai; không được xem B3/B4 hoàn thành.
+## 8. Giới hạn và quyết định phát hành
 
-## 10. Điều kiện hoàn thành nhóm B
-
-- Lint, TypeScript, Next.js build, Cloud Functions build PASS.
-- Firestore Rules và callable tests bằng Emulator PASS.
-- Regression kho/Dexie/QR/chat/backup PASS.
-- Kiểm tra thực tế trên điện thoại bằng tài khoản Admin và Worker PASS.
-- Chưa deploy production/merge main cho đến khi người dùng xác nhận.
-\n\n## 11. Cập nhật triển khai callable (2026-11-01 — chờ CI)\n- Đã thêm `functions/src/employeeCardAuth.ts` và export `loginWithEmployeeCard`, `setEmployeeCardPin` từ `functions/src/index.ts`.\n- PIN hiện áp dụng mặc định đúng 6 chữ số; scrypt + salt; counter transaction khóa 15 phút sau 5 lần thử. Cần xác nhận chính sách PIN này trước khi đưa vào sử dụng thực tế.\n- Custom Token chỉ mang claim `authMethod: employee_card`; tenant/role vẫn phải được tải và xác minh lại qua Membership Gateway.\n- Chưa có callable Emulator tests, chưa enforce App Check, chưa tích hợp client. Không xem đây là hoàn tất B3/B4.\n
+- Không dùng mã nhân viên hoặc Tenant ID làm thông tin đăng nhập độc lập.
+- Không triển khai PIN, mật khẩu nội bộ hay Custom Token cho nhân viên.
+- Chưa deploy Firebase production hoặc merge PR nếu chưa có xác nhận của chủ dự án.
