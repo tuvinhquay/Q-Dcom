@@ -31,7 +31,9 @@ function opaqueKey(value: string): string {
 }
 
 async function hashPin(pin: string, salt: Buffer): Promise<Buffer> {
-  return await new Promise<Buffer>((resolve, reject) => {\n    scryptCallback(pin, salt, HASH_BYTES, SCRYPT_OPTIONS, (error, derivedKey) => {\n      if (error) reject(error);\n      else resolve(derivedKey as Buffer);\n    });\n  });
+  return await new Promise<Buffer>((resolve, reject) => {
+    scryptCallback(pin, salt, HASH_BYTES, SCRYPT_OPTIONS, (error, derivedKey) => {\n      if (error) reject(error);\n      else resolve(derivedKey as Buffer);\n    });
+  });
 }
 
 async function matchesPin(pin: string, saltHex: string, expectedHex: string): Promise<boolean> {
