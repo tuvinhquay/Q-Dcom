@@ -1,4 +1,4 @@
-| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | CI run `41293642164` đang chạy trên commit `400c538`; chưa có kết quả build Functions sau khi thêm callable. Firebase runtime/Termux và regression thực tế còn chờ |này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
+| Kiểm tra kỹ thuật và kiểm tra thực tế | 🟡 | Đang xác minh CI sau khi loại bỏ phương thức PIN; chưa có smoke test Firebase/Termux bằng tài khoản Admin/Worker thật |n `41293642164` đang chạy trên commit `400c538`; chưa có kết quả build Functions sau khi thêm callable. Firebase runtime/Termux và regression thực tế còn chờ |này là bảng điều khiển tiến độ dài hạn của dự án. Cập nhật trạng thái tại đây sau mỗi công việc; không thay thế `SESSION_LOG.md` (nhật ký diễn biến từng phiên).
 >
 > ****Cập nhật gần nhất:** 2026-11-01 · B3/B4: triển khai callable PIN và Custom Token, đang chờ CIng credential nhân viên và bổ sung Rules Emulator tests  
 > **Nhánh làm việc hiện tại:** `feature/employee-card-pin-auth-2026-10-31` (tách từ nhánh nền tảng)  
@@ -23,7 +23,7 @@
 | Khảo sát yêu cầu và vấn đề — Phase 1 | 🟢 | Đã thống nhất yêu cầu, vai trò Admin/Worker, luồng sản xuất và các chức năng phải bảo toàn |
 | Kiểm tra Authentication & Authorization — Phase 2 | 🟢 | Đã rà soát tĩnh các luồng và tệp chính; chưa phải kiểm toán bảo mật toàn diện hoặc kiểm thử runtime |
 | Lập kế hoạch triển khai theo từng nhóm | 🟡 | Đã tạo thiết kế nền tảng Authentication/Membership; tiếp tục chi tiết hóa và triển khai từng bước |
-| Sửa mã nguồn / triển khai thực tế | 🟢 | Đã tích hợp trạng thái xác thực rõ ràng vào app shell/Dashboard; thu hồi dữ liệu xưởng khi Auth đổi UID, Membership/tenant bị khóa hoặc xác minh thất bại |
+| Sửa mã nguồn / triển khai thực tế | 🟡 | Firebase Auth + Membership Gateway đã có; phương thức PIN đã bị loại bỏ theo quyết định 2026-11-03; tiếp tục rà soát và hoàn thiện liên kết UID Worker |ng thái xác thực rõ ràng vào app shell/Dashboard; thu hồi dữ liệu xưởng khi Auth đổi UID, Membership/tenant bị khóa hoặc xác minh thất bại |
 | Kiểm tra kỹ thuật và kiểm tra thực tế | 🔵 | CI run `41213360712` trên đúng HEAD `6314943` PASS toàn bộ lint, TypeScript, Next build, Functions build và Firestore Rules Emulator; còn chờ smoke test Firebase/Termux bằng tài khoản thật |
 
        > **Vị trí đang làm:** B2/B6 CI PASS trên nhánh nền tảng; B7 chờ smoke test thực tế. Trên nhánh `feature/employee-card-pin-auth-2026-10-31`, B3/B4 đã có lớp Rules chặn client truy cập credential và login-attempt records, kèm Emulator tests; PR #3 Draft đã mở để chạy CI (run `41215522822` đang chạy). Callable xác minh PIN, rate limit và cấp Custom Token vẫn chưa triển khai; chưa đánh dấu hoàn thành.
@@ -347,3 +347,11 @@ Sau mỗi phiên làm việc:
 - Kiểm tra Rules xác nhận credential nested path bị deny client read/write; collection `employeeLoginAttempts` top-level cũng đang bị default-deny do không có allow rule tương ứng.
 - B3/B4 vẫn 🟡. Chưa có callable Functions Emulator tests, App Check enforcement hoặc client `signInWithCustomToken`; PIN 6 chữ số vẫn là thiết kế hiện tại, chưa chốt để phát hành.
 - Không deploy production, không merge PR, không sửa `main`; giữ nguyên các tính năng cũ.
+
+
+### 2026-11-03 — Thay đổi kiến trúc xác thực theo quyết định người dùng
+- Bỏ phương thức PIN/thẻ nhân viên; xác thực bằng Google qua Firebase Auth cho cả Admin và Worker.
+- UID Firebase là danh tính; Membership đúng Tenant là nguồn cấp role. employeeCode chỉ là mã hồ sơ, tenantId chỉ là phạm vi dữ liệu, không tự cấp quyền.
+- Đã xóa `functions/src/employeeCardAuth.ts` và gỡ export `loginWithEmployeeCard` / `setEmployeeCardPin` khỏi Functions index.
+- Đã viết lại `AUTHENTICATION_ARCHITECTURE.md` theo mô hình mới.
+- B3/B4 vẫn 🟡: chờ CI, rà soát Rules/Functions và thiết kế trải nghiệm liên kết UID Worker. Không merge/deploy.
