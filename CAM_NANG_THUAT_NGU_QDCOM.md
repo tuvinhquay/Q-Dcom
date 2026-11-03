@@ -383,3 +383,8 @@ Khi thuật ngữ mới xuất hiện, sẽ giải thích theo mẫu:
 
 Không cần học thuộc hết trước khi làm app. Ta học từng nhóm đúng lúc công việc cần dùng và cập nhật cẩm nang theo mã nguồn thật.
 \n\n## Firebase Custom Token\nLà vé đăng nhập ngắn hạn do máy chủ đáng tin cậy tạo ra cho một Firebase UID. Ứng dụng dùng vé này để đăng nhập Firebase Auth; sau đó vẫn phải đọc Membership để xác định tenant và role. Không tự nhét role do người dùng gửi vào token.\n\n## Scrypt + Salt\nCách tạo mã kiểm tra PIN/mật khẩu khó đoán ngược. Salt là chuỗi ngẫu nhiên riêng cho từng PIN, giúp hai người dùng cùng PIN vẫn có mã băm khác nhau. Không lưu PIN dạng chữ thường.\n\n## Rate limit / Lockout\nGiới hạn số lần thử đăng nhập trong một khoảng thời gian. Khi nhập sai quá ngưỡng, hệ thống tạm khóa để làm chậm việc dò PIN tự động.\n
+
+### Cập nhật 2026-11-03
+- Q-Dcom không sử dụng PIN hoặc mã thẻ nhân viên để đăng nhập. Tài khoản Google/Firebase Auth xác minh danh tính; Membership xác định quyền trong Tenant.
+- Firebase UID: mã định danh duy nhất do Firebase Auth cấp cho tài khoản đã xác thực.
+- ID Token: bằng chứng phiên đăng nhập do Firebase cấp; server/Firestore dùng để xác minh request.
