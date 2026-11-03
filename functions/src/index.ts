@@ -140,4 +140,3 @@ export const onOperationRateChanged = onDocumentWritten(
   },
 );
 
-export { loginWithEmployeeCard, setEmployeeCardPin } from "./employeeCardAuth.js";
