@@ -781,3 +781,38 @@
 3. Thiết kế account identity ổn định cho cả hai phương thức và luồng kích hoạt thẻ có xác minh Admin/server để chống chiếm mã thẻ.
 4. Thiết kế Recovery Key/client-side encryption/backup restore theo từng batch nhỏ; test trước khi tích hợp UI.
 5. Giữ nguyên Dexie/IndexedDB, kho local-first, QR, chat, @Q Bot, PO và các chức năng cũ; regression trước mỗi commit.
+
+
+## Phiên 2026-11-04 · Audit thực tế roadmap và mã nguồn Q-Dcom
+
+### Phạm vi đã rà soát
+- Đọc lại `TIEN_DO_DU_AN.md`, `SESSION_LOG.md`, `AUTHENTICATION_ARCHITECTURE.md` trước khi tiếp tục.
+- Tạo nhánh riêng `roadmap/batch-b-auth-audit-2026-11-04` từ nhánh đã bàn giao; không sửa `main`, không merge PR và không deploy production.
+- Kiểm tra trực tiếp app shell `components/qdcom-app.tsx`, `components/workshop-dashboard.tsx`, `lib/auth/authGateway.ts`, `lib/services/tenantService.ts`, `lib/db/qdcomDB.ts`, `lib/sync/qdcomSync.ts`, `lib/sync/googleDriveBackup.ts`, `lib/firebase.ts`, `lib/services/workshopFirestoreService.ts`, `types/tenant.ts`, `firestore.rules`, `functions/src/index.ts`, `functions/package.json`, `tests/security/rules.test.mjs`.
+
+### Phát hiện quan trọng
+1. Đăng ký ID hiện tại chỉ lưu hồ sơ vào localStorage; đăng nhập lại chỉ tra ID trên cùng thiết bị. Chưa có mật khẩu, server verification hoặc Firebase identity. Không được coi là đăng nhập thẻ công ty an toàn.
+2. Auth Gateway hiện yêu cầu Firebase Auth user; thiết kế đang là Google-only. Chưa có employee ID + password backend và mapping danh tính ổn định.
+3. Google provider đang xin scope Drive trong luồng đăng nhập; app đánh dấu Drive connected và tự động báo backup sau Google Auth. Trái với quyết định tách Google login khỏi Drive consent.
+4. Google Drive service chỉ gzip JSON, không mã hóa; backup schema v1 chỉ chứa products, botVocabulary, members. Thiếu PO, production entries, worker extras, tenant settings và các dữ liệu xưởng.
+5. Chưa có bằng chứng restore/download round-trip đầy đủ trên Drive. Logout hiện phụ thuộc backup thành công và có thể từ chối logout nếu token hết hạn/backup lỗi.
+6. PO, sản lượng, duyệt, phụ phí, chat và wallet có code trong Workshop Dashboard/service, Rules và Cloud Functions. Đây là trạng thái đã có implementation nhưng cần test nghiệp vụ và privacy; không nên ghi toàn bộ C/D là chưa bắt đầu, cũng chưa được PASS.
+7. Dexie có các bảng sản phẩm, vocabulary, members, PO, production, extras, tenant memberships/settings; nhưng workshop services vẫn thao tác Firestore trực tiếp. Cần chốt rõ mô hình Local-first/hybrid và đồng bộ.
+8. Responsive navigation đã có; chưa xác minh đáp ứng yêu cầu mobile drawer trượt và kiểm thử thiết bị.
+9. QR, community chat và @Q Bot có source; chưa có full regression evidence trên HEAD hiện tại.
+
+### Cập nhật tài liệu
+- Tạo `ROADMAP_AUDIT_2026-11-04.md` với phát hiện P0/P1/P2, ma trận trạng thái và thứ tự xử lý.
+- Hiệu chỉnh bảng trạng thái đầu `TIEN_DO_DU_AN.md`: Auth và backup được đánh dấu 🔴 do blocker thực tế; các module có code nhưng chưa test giữ 🟡; không đánh dấu PASS.
+- Ghi rõ thứ tự xử lý: Auth/identity → tách Drive consent/logout → Recovery Key/encryption/restore → C/D tests → mobile drawer → full regression → staging/release.
+
+### Giới hạn xác minh
+- Đây là source audit và cập nhật roadmap. Chưa sửa code ứng dụng trong batch audit này.
+- Chưa chạy lint, TypeScript, Next build, Functions build, Emulator tests hoặc live Firebase/Drive/Android tests trong phiên này.
+- Không có test evidence mới; không đánh dấu bất kỳ phase nào PASS từ audit này.
+- PR #3 vẫn Draft; không merge, không deploy production.
+
+### Vị trí tiếp theo
+- Bắt đầu batch B: thiết kế và triển khai identity an toàn cho hai phương thức Google và employee ID + password; trước đó cần audit history của employeeCardAuth đã xóa để tách PIN khỏi phần xác thực thẻ, không khôi phục PIN.
+- Tách Drive scopes/consent khỏi Google Sign-In và sửa logout không phụ thuộc backup.
+- Mỗi batch sau khi sửa phải chạy CI/tests theo đúng commit, regression, cập nhật tiến độ và append session log.
