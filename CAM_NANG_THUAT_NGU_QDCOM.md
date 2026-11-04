@@ -388,3 +388,16 @@ Không cần học thuộc hết trước khi làm app. Ta học từng nhóm đ
 - Q-Dcom không sử dụng PIN hoặc mã thẻ nhân viên để đăng nhập. Tài khoản Google/Firebase Auth xác minh danh tính; Membership xác định quyền trong Tenant.
 - Firebase UID: mã định danh duy nhất do Firebase Auth cấp cho tài khoản đã xác thực.
 - ID Token: bằng chứng phiên đăng nhập do Firebase cấp; server/Firestore dùng để xác minh request.
+
+
+## Cập nhật 2026-11-04 — Hai phương thức đăng ký và khôi phục dữ liệu
+- **Local-first:** ứng dụng ưu tiên lưu và xử lý dữ liệu nghiệp vụ trên thiết bị người dùng; không có nghĩa là không cần backup.
+- **Q-Dcom Recovery Key:** mã bí mật ngẫu nhiên mạnh do Q-Dcom cấp cho tài khoản thẻ ID công ty, dùng trong quy trình khôi phục/giải mã bản sao lưu. Người dùng phải tự bảo quản; không phải PIN đăng nhập.
+- **Encryption at rest / mã hóa dữ liệu lưu trữ:** dữ liệu được mã hóa khi nằm trong database hoặc file backup.
+- **Client-side encryption:** mã hóa ngay trên thiết bị trước khi backup rời thiết bị; máy chủ/Drive chỉ nhận dữ liệu đã mã hóa.
+- **Ciphertext:** dữ liệu sau mã hóa, không thể đọc như nội dung gốc nếu thiếu khóa.
+- **Key rotation:** thay/luân chuyển khóa mã hóa; phải giữ khả năng giải mã các backup cũ bằng quy trình tái mã hóa hoặc bọc khóa.
+- **Integrity check:** kiểm tra bản sao lưu có bị hỏng hoặc bị sửa đổi hay không trước khi khôi phục.
+- **Google Sign-In vs Google Drive permission:** đăng nhập Google chỉ xác minh danh tính; quyền Drive là quyền riêng, cần người dùng đồng ý.
+- **Quyết định xác thực mới:** Q-Dcom giữ hai lựa chọn độc lập: mã thẻ ID công ty + mật khẩu riêng, hoặc Google. Chỉ bỏ PIN cũ; không bỏ đăng nhập thẻ công ty.
+- **Vai trò Firebase:** xác thực, Membership, Tenant, role và kiểm soát bảo mật. Firebase có thể lưu metadata Auth/Membership cần thiết; dữ liệu nghiệp vụ chính vẫn Local-first.
