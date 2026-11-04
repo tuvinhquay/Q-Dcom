@@ -2,7 +2,7 @@
 
 > Bảng điều khiển hiện hành. Các quyết định xác thực chỉ được cập nhật theo xác nhận mới nhất của chủ dự án; lịch sử phiên cũ được giữ lại và đánh dấu đã được thay thế khi có mâu thuẫn.
 
-**Cập nhật gần nhất:** 2026-11-04 · Chốt định hướng hai phương thức đăng ký, Local-first và khôi phục dữ liệu.
+**Cập nhật gần nhất:** 2026-11-04 · Audit source theo roadmap; phát hiện blocker P0 ở Auth và Backup.
 **Nhánh làm việc:** `feature/employee-card-pin-auth-2026-10-31`
 **PR:** #3 Draft — chưa merge.
 **Nguyên tắc:** không sửa `main`, không merge PR hoặc deploy Firebase production nếu chưa được người dùng đồng ý.
@@ -11,13 +11,13 @@
 
 | Hạng mục | Trạng thái | Ghi chú |
 |---|---|---|
-| Xác thực và phân quyền Firebase | 🟡 | Firebase là cổng xác thực/ủy quyền; cần thiết kế lại để hỗ trợ cả tài khoản ID công ty + mật khẩu và Google |
+| Xác thực và phân quyền Firebase | 🔴 | Source hiện tại vẫn Google-only; local ID không phải employee-card auth. Xem ROADMAP_AUDIT_2026-11-04.md |
 | Đăng ký bằng thẻ ID công ty | 🟡 | Giữ lại; mã thẻ công ty kết hợp mật khẩu riêng do người dùng tạo; phải xác minh thẻ với hồ sơ nhân viên phía server |
-| Đăng ký/đăng nhập Google | 🟡 | Giữ lại như lựa chọn độc lập; Firebase Auth xác minh Google; Membership quyết định quyền Tenant |
+| Đăng ký/đăng nhập Google | 🟡 | Có Firebase Google Auth, nhưng Drive scopes đang gộp vào login; cần tách consent |
 | Loại bỏ PIN cũ | 🟢 | Chỉ loại bỏ PIN; không được hiểu là loại bỏ đăng nhập thẻ ID hoặc mật khẩu người dùng |
-| Q-Dcom Recovery Key | 🟡 | Đã chốt yêu cầu: cấp mã khôi phục riêng cho tài khoản ID công ty; thiết kế và triển khai chưa bắt đầu |
-| Google Drive backup/restore | 🟡 | Dành cho người dùng chọn Google và cấp quyền Drive; phải mã hóa, kiểm tra quyền và cô lập tenant |
-| Local-first data | 🟡 | Dữ liệu nghiệp vụ chính nằm trên thiết bị người dùng; tiếp tục rà soát Dexie/IndexedDB và mọi luồng ghi cloud hiện có |
+| Q-Dcom Recovery Key | 🔴 | Chưa có client-side encryption; chưa có Recovery Key/restore an toàn |
+| Google Drive backup/restore | 🔴 | Hiện chỉ gzip upload products/vocabulary/members; chưa mã hóa và chưa chứng minh restore đầy đủ |
+| Local-first data | 🟡 | Dexie có bảng local; workshop vẫn đọc/ghi Firestore trực tiếp — cần chốt hybrid/local-first và sync strategy |
 | CI / Firebase thật / Android smoke test | 🔵 | Chưa xác nhận kết quả mới cho toàn bộ kiến trúc hai phương thức; chưa có live smoke test |
 | PO và quy trình sản xuất | ⚪ | Chưa bắt đầu batch triển khai tiếp theo |
 
@@ -408,3 +408,10 @@ Các mục lịch sử bên dưới có nhắc PIN/thẻ nhân viên/Custom Toke
 - **Chưa sửa code, chưa chạy test, chưa tạo Recovery Key thật, chưa triển khai backup/restore hoặc mã hóa.** Đây là phiên chốt yêu cầu và cập nhật tài liệu, không phải Technical PASS.
 - Không merge PR #3, không deploy Firebase production, không sửa `main`.
 - Vị trí tiếp theo: rà soát code hiện tại và lịch sử module employee card trước khi thiết kế lại Authentication Gateway cho hai phương thức; sau đó thiết kế backup Local-first + Recovery Key theo batch nhỏ, kèm test và cập nhật tài liệu.
+
+
+## Audit toàn bộ roadmap — 2026-11-04
+
+Đã rà soát source thật trên nhánh `roadmap/batch-b-auth-audit-2026-11-04`. Kết quả chi tiết nằm trong `ROADMAP_AUDIT_2026-11-04.md`. Các blocker P0: (1) ID login chỉ là localStorage, không có password/server auth; (2) Google login gộp Drive permission; (3) Drive backup chỉ gzip, không mã hóa; (4) backup chỉ chứa products/vocabulary/members, thiếu dữ liệu xưởng; (5) chưa xác minh restore đầy đủ. PO/production/earnings có code nhưng chưa đủ evidence để PASS. Mobile nav có responsive nhưng chưa xác nhận drawer. Full regression và live smoke test chưa thực hiện.
+
+**Thứ tự xử lý:** B Auth/identity → tách Drive consent/logout → Recovery Key/encryption/backup restore → C/D nghiệp vụ và wallet tests → F mobile drawer → G regression → H staging/release. Không làm một commit khổng lồ; mỗi batch có test và commit riêng.
