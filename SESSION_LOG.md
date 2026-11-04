@@ -738,3 +738,46 @@
 2. Chạy CI đầy đủ trên nhánh hiện tại; sửa mọi lỗi phát sinh.
 3. Rà soát server-side Membership checks trong callable nghiệp vụ và Firestore Rules.
 4. Sau Technical PASS mới thiết kế/kiểm thử luồng Admin liên kết tài khoản Google UID cho Worker.
+
+
+## Phiên 2026-11-04 · Chốt kiến trúc đăng ký kép và Q-Dcom Recovery Key
+
+### Mục tiêu phiên
+- Kết thúc phần trao đổi về xác thực và cảnh báo đăng ký.
+- Ghi nhận đầy đủ quyết định mới nhất để phiên sau không tiếp tục theo thiết kế Google-only/PIN cũ.
+- Chuẩn bị chuyển sang nhóm công việc mới sau khi chủ dự án xác nhận.
+
+### Quyết định của chủ dự án
+1. Q-Dcom phải cho người dùng tự chọn một trong hai cách đăng ký:
+   - **Thẻ ID công ty + mật khẩu riêng:** dùng mã thẻ do công ty cấp, người dùng tự đặt mật khẩu; được sử dụng đầy đủ tính năng theo quyền Membership/role.
+   - **Google:** đăng ký/đăng nhập bằng Google; có thể cấp quyền Google Drive để backup/restore.
+2. **Chỉ bỏ PIN cũ.** Không được xóa hoặc loại bỏ chức năng đăng ký/đăng nhập bằng thẻ ID công ty.
+3. Tài khoản thẻ ID công ty cần **Q-Dcom Recovery Key** riêng để khôi phục dữ liệu khi đổi/mất thiết bị mà không bắt buộc đăng ký Google.
+4. Người dùng phải tự bảo quản mật khẩu, Recovery Key và tài khoản Google. Cần hiển thị lời nhắc ngắn gọn, rõ hậu quả khi mất toàn bộ thông tin.
+5. Firebase là “người gác cổng số” của Q-Dcom: xác thực, kiểm tra Membership/Tenant/role và bảo vệ truy cập. Firebase không phải kho dữ liệu nghiệp vụ chính; metadata Auth/Membership tối thiểu vẫn có thể nằm trên Firebase.
+6. Dữ liệu nghiệp vụ chính được định hướng Local-first trên thiết bị. Google Drive là nơi chứa backup khi người dùng chủ động cấp quyền, không phải database vận hành.
+
+### Nội dung cảnh báo đã soạn
+- **Đăng ký thẻ ID:** nhập mã thẻ công ty, tự tạo mật khẩu; bảo quản Recovery Key để phục hồi khi đổi/mất thiết bị; không chia sẻ mật khẩu/mã.
+- **Đăng ký Google:** đăng nhập bằng Google; muốn backup Drive phải cấp quyền riêng; bảo vệ tài khoản Google.
+- Đã nêu rõ mất cả thông tin đăng nhập và Recovery Key có thể khiến dữ liệu backup mã hóa không thể khôi phục.
+
+### Cập nhật tài liệu trên nhánh làm việc
+- Cập nhật `AUTHENTICATION_ARCHITECTURE.md` để thay quyết định Google-only bằng hai phương thức độc lập, vai trò Firebase, Local-first, Recovery Key, backup encryption và các test bắt buộc.
+- Cập nhật phần đầu `TIEN_DO_DU_AN.md` để phản ánh quyết định hiện hành; giữ lại lịch sử cũ, không xóa các phiên trước.
+- Append mục này vào `SESSION_LOG.md`, không ghi đè lịch sử.
+- Bổ sung thuật ngữ Local-first, Recovery Key, client-side encryption, ciphertext, key rotation, integrity check và phân biệt Google Sign-In với Drive permission vào cẩm nang.
+
+### Giới hạn và xác minh
+- Đây là phiên chốt yêu cầu và cập nhật tài liệu. Không có code ứng dụng được sửa trong phiên này.
+- Chưa triển khai đăng ký kép, password hashing, credential server-side, Recovery Key, client-side encryption, backup/restore hoặc migration.
+- Chưa chạy lint/typecheck/build/CI cho thay đổi tài liệu; chưa chạy Firebase/Android live test.
+- Không merge PR #3, không deploy Firebase production, không sửa `main`.
+- Các trạng thái triển khai vẫn 🟡/⚪; không đánh dấu Technical PASS.
+
+### Vị trí tiếp theo
+1. Trước khi sửa code, đọc lại tiến độ và nhật ký phiên mới nhất.
+2. Audit source hiện tại và commit trước khi xóa `employeeCardAuth.ts` để tách phần xác minh thẻ khỏi PIN; không khôi phục PIN.
+3. Thiết kế account identity ổn định cho cả hai phương thức và luồng kích hoạt thẻ có xác minh Admin/server để chống chiếm mã thẻ.
+4. Thiết kế Recovery Key/client-side encryption/backup restore theo từng batch nhỏ; test trước khi tích hợp UI.
+5. Giữ nguyên Dexie/IndexedDB, kho local-first, QR, chat, @Q Bot, PO và các chức năng cũ; regression trước mỗi commit.
