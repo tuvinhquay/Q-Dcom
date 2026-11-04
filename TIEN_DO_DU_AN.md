@@ -1,8 +1,8 @@
 # TIẾN ĐỘ DỰ ÁN Q-Dcom
 
-> Bảng điều khiển hiện hành. Lịch sử chi tiết được giữ bên dưới và trong `SESSION_LOG.md`; các kế hoạch PIN/thẻ nhân viên ghi trước ngày 2026-11-03 đã được thay thế theo quyết định mới.
+> Bảng điều khiển hiện hành. Các quyết định xác thực chỉ được cập nhật theo xác nhận mới nhất của chủ dự án; lịch sử phiên cũ được giữ lại và đánh dấu đã được thay thế khi có mâu thuẫn.
 
-**Cập nhật gần nhất:** 2026-11-03 · Bỏ đăng nhập PIN/thẻ; chuyển sang Google/Firebase Auth + Membership xác minh UID/Tenant/role.
+**Cập nhật gần nhất:** 2026-11-04 · Chốt định hướng hai phương thức đăng ký, Local-first và khôi phục dữ liệu.
 **Nhánh làm việc:** `feature/employee-card-pin-auth-2026-10-31`
 **PR:** #3 Draft — chưa merge.
 **Nguyên tắc:** không sửa `main`, không merge PR hoặc deploy Firebase production nếu chưa được người dùng đồng ý.
@@ -11,16 +11,34 @@
 
 | Hạng mục | Trạng thái | Ghi chú |
 |---|---|---|
-| Khảo sát yêu cầu và bảo vệ chức năng cũ | 🟢 | Đã rà soát phạm vi và các tính năng phải bảo toàn |
-| Firebase Auth + Membership Gateway | 🟡 | Đã triển khai phần cốt lõi; tiếp tục kiểm tra toàn bộ luồng và server-side enforcement |
-| Bỏ phương thức PIN/thẻ nhân viên | 🟢 | Đã xóa callable PIN, module PIN và tham chiếu Rules/test riêng cho credential PIN |
-| Liên kết tài khoản Google của Worker vào Membership | 🟡 | Cần hoàn thiện trải nghiệm Admin liên kết đúng Firebase UID, tránh nhập nhầm |
-| CI sau thay đổi kiến trúc | 🟡 | Đang chạy trên nhánh hiện tại; chưa đánh dấu PASS |
-| Firebase thật / Android smoke test | 🔵 | Chưa kiểm thử bằng tài khoản Admin và Worker thật |
-| PO và quy trình sản xuất | ⚪ | Chưa bắt đầu batch triển khai |
-| Wallet, Google Drive regression, mobile menu và full regression | ⚪ | Theo roadmap các giai đoạn tiếp theo |
+| Xác thực và phân quyền Firebase | 🟡 | Firebase là cổng xác thực/ủy quyền; cần thiết kế lại để hỗ trợ cả tài khoản ID công ty + mật khẩu và Google |
+| Đăng ký bằng thẻ ID công ty | 🟡 | Giữ lại; mã thẻ công ty kết hợp mật khẩu riêng do người dùng tạo; phải xác minh thẻ với hồ sơ nhân viên phía server |
+| Đăng ký/đăng nhập Google | 🟡 | Giữ lại như lựa chọn độc lập; Firebase Auth xác minh Google; Membership quyết định quyền Tenant |
+| Loại bỏ PIN cũ | 🟢 | Chỉ loại bỏ PIN; không được hiểu là loại bỏ đăng nhập thẻ ID hoặc mật khẩu người dùng |
+| Q-Dcom Recovery Key | 🟡 | Đã chốt yêu cầu: cấp mã khôi phục riêng cho tài khoản ID công ty; thiết kế và triển khai chưa bắt đầu |
+| Google Drive backup/restore | 🟡 | Dành cho người dùng chọn Google và cấp quyền Drive; phải mã hóa, kiểm tra quyền và cô lập tenant |
+| Local-first data | 🟡 | Dữ liệu nghiệp vụ chính nằm trên thiết bị người dùng; tiếp tục rà soát Dexie/IndexedDB và mọi luồng ghi cloud hiện có |
+| CI / Firebase thật / Android smoke test | 🔵 | Chưa xác nhận kết quả mới cho toàn bộ kiến trúc hai phương thức; chưa có live smoke test |
+| PO và quy trình sản xuất | ⚪ | Chưa bắt đầu batch triển khai tiếp theo |
 
-**Quyết định xác thực hiện hành:** người dùng đăng nhập bằng tài khoản Google qua Firebase Auth. Firebase UID xác định danh tính; Membership đúng Tenant xác định vai trò. Mã nhân viên chỉ là mã hồ sơ; Tenant ID chỉ xác định phạm vi dữ liệu. Không có PIN, mật khẩu nội bộ hoặc Custom Token đăng nhập thẻ.
+## Quyết định kiến trúc hiện hành — 2026-11-04
+
+Q-Dcom có **hai lựa chọn đăng ký độc lập**:
+
+1. **Thẻ ID công ty + mật khẩu riêng:** người dùng nhập mã thẻ do công ty cấp và tự tạo mật khẩu. Máy chủ phải xác minh mã thẻ, trạng thái nhân viên và Tenant trước khi cấp phiên đăng nhập. Mã thẻ không được coi là bí mật duy nhất; mật khẩu phải được băm bằng thuật toán chuyên dụng, có salt, rate limit và quy trình đặt lại an toàn.
+2. **Google:** người dùng đăng ký/đăng nhập bằng Google qua Firebase Auth. Sau đó Membership xác định Tenant và role. Người dùng có thể tự nguyện cấp quyền Google Drive để sao lưu/khôi phục dữ liệu.
+
+**Chỉ bỏ PIN cũ. Không bỏ đăng nhập bằng thẻ ID công ty.** Không ép người dùng thẻ ID phải liên kết Google.
+
+## Vai trò các thành phần và dữ liệu
+
+- **Firebase:** người gác cổng số — xác thực danh tính, kiểm tra Membership/Tenant/role, bảo vệ request và quản lý trạng thái tài khoản. Firebase vẫn có thể lưu dữ liệu định danh/xác thực tối thiểu cần thiết; không dùng Firestore làm kho dữ liệu nghiệp vụ chính theo định hướng Local-first.
+- **Thiết bị người dùng:** nơi lưu trữ và xử lý dữ liệu nghiệp vụ chính của Q-Dcom, sử dụng IndexedDB/Dexie; phải có mã hóa phù hợp cho dữ liệu nhạy cảm.
+- **Google Drive:** nơi lưu bản sao lưu khi người dùng Google đã cấp quyền; không phải database vận hành chính.
+- **Q-Dcom Recovery Key:** mã bí mật riêng cấp cho tài khoản ID công ty, dùng để khôi phục/giải mã bản sao lưu. Phải được tạo ngẫu nhiên mạnh, chỉ hiển thị khi cấp, cho phép lưu/in an toàn và không lưu dạng rõ ở máy chủ.
+- **Khôi phục:** phải xác minh tài khoản, quyền sở hữu backup, tenant và tính toàn vẹn trước khi phục hồi; không ghi đè dữ liệu hiện có một cách âm thầm.
+
+**Phạm vi đã chốt nhưng chưa triển khai:** hai phương thức đăng ký, Recovery Key, mã hóa backup, luồng sao lưu/khôi phục và kiểm thử chuyển thiết bị. Không đánh dấu PASS chỉ vì đã thống nhất yêu cầu.
 
 ## 1. Quy ước trạng thái
 
@@ -376,3 +394,17 @@ Sau mỗi phiên làm việc:
 
 ### Ghi chú thay thế thiết kế cũ
 Các mục lịch sử bên dưới có nhắc PIN/thẻ nhân viên/Custom Token vì đó là phương án đã được khảo sát trước đây. Theo quyết định ngày 2026-11-03, toàn bộ phương án đó đã bị hủy; chỉ bảng điều khiển hiện hành và các cập nhật mới nhất ở cuối file phản ánh thiết kế đang áp dụng.
+
+
+## Phiên 2026-11-04 — Chốt hai phương thức đăng ký và Q-Dcom Recovery Key
+
+- Người dùng xác nhận Q-Dcom cần hai lựa chọn độc lập: (1) mã thẻ ID công ty + mật khẩu riêng do người dùng tự đặt; (2) đăng ký/đăng nhập Google.
+- Với thẻ ID công ty, người dùng được sử dụng đầy đủ chức năng theo Membership/role. Mã thẻ phải được xác minh với hồ sơ nhân viên phía server; không được dùng mã thẻ đơn lẻ như mật khẩu. Mật khẩu cần hash có salt, rate limit, quy trình đổi/đặt lại an toàn.
+- Chỉ bỏ PIN cũ; khôi phục yêu cầu giữ lại chức năng đăng ký/đăng nhập thẻ công ty.
+- Chốt tính năng **Q-Dcom Recovery Key**: cấp mã khôi phục riêng cho tài khoản thẻ ID công ty để phục hồi dữ liệu khi đổi/mất thiết bị. Mã phải có entropy cao, không lưu dạng rõ ở server, dùng trong thiết kế mã hóa/giải mã backup; người dùng chịu trách nhiệm lưu giữ an toàn.
+- Với Google, đăng nhập Google không tự đồng nghĩa đã cấp quyền Drive. Người dùng phải đồng ý/cấp quyền riêng trước khi backup. Backup Drive cần mã hóa, phân tách tenant, có kiểm tra integrity và luồng restore an toàn.
+- Xác nhận kiến trúc Local-first: dữ liệu nghiệp vụ chính lưu trên thiết bị (Dexie/IndexedDB). Firebase là cổng xác thực, phân quyền, kiểm soát tenant và bảo mật; vẫn có thể lưu metadata/credential tối thiểu phục vụ Auth, Membership và bảo vệ hệ thống, không phải nơi lưu database nghiệp vụ chính.
+- Đã soạn nội dung cảnh báo đăng ký ngắn gọn cho cả hai phương thức, yêu cầu người dùng tự bảo quản mật khẩu, Recovery Key và tài khoản Google; mất toàn bộ thông tin cần thiết có thể khiến dữ liệu không thể khôi phục.
+- **Chưa sửa code, chưa chạy test, chưa tạo Recovery Key thật, chưa triển khai backup/restore hoặc mã hóa.** Đây là phiên chốt yêu cầu và cập nhật tài liệu, không phải Technical PASS.
+- Không merge PR #3, không deploy Firebase production, không sửa `main`.
+- Vị trí tiếp theo: rà soát code hiện tại và lịch sử module employee card trước khi thiết kế lại Authentication Gateway cho hai phương thức; sau đó thiết kế backup Local-first + Recovery Key theo batch nhỏ, kèm test và cập nhật tài liệu.
