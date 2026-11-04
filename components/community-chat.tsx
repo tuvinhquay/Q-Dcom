@@ -23,16 +23,19 @@ import {
   type PublicUserProfile,
 } from "@/lib/services/gatekeeperService";
 import type { Product } from "@/types/product";
+import type { TenantRole } from "@/types/tenant";
 
 type CommunityChatProps = {
   uid: string;
   displayName: string;
   products: Product[];
+  tenantId?: string;
+  role?: TenantRole;
 };
 
 const invitePrefix = "qdcom://";
 
-export function CommunityChat({ uid, displayName, products }: CommunityChatProps) {
+export function CommunityChat({ uid, displayName, products, tenantId = "local-default", role = "worker" }: CommunityChatProps) {
   const [chats, setChats] = useState<GatekeeperChat[]>([]);
   const [groups, setGroups] = useState<GatekeeperGroup[]>([]);
   const [activeChatId, setActiveChatId] = useState("");
@@ -279,7 +282,7 @@ export function CommunityChat({ uid, displayName, products }: CommunityChatProps
         <div className="community-messages" aria-live="polite">
           {messages.map((message) => {
             const isQuery = message.kind === "q-query" || /^@q\b/i.test(message.text);
-            const localAnswer = isQuery ? parseQBotQuery(message.text, products) : null;
+            const localAnswer = isQuery ? parseQBotQuery(message.text, products, undefined, { tenantId, role, uid }) : null;
             return <article className={`community-message ${message.senderId === uid ? "mine" : ""}`} key={message.id}>
               <strong>{message.senderId === uid ? "Bạn" : profiles[message.senderId]?.fullName ?? "Thành viên"}</strong>
               <p>{message.text}</p>

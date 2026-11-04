@@ -1,7 +1,23 @@
 import type { Product } from "@/types/product";
+import { classifyQBotPermission } from "@/lib/tenancy/authorization";
+import type { TenantRole } from "@/types/tenant";
+import { DEFAULT_TENANT_ID } from "@/lib/db/qdcomDB";
 import { copyDefaultVocabulary, type BotIntent, type BotVocabulary } from "./vocabulary";
 
-export interface QBotResult { intent: BotIntent | "SHOW_CARD"; message: string; products: Product[] }
+export interface QBotResult {
+  intent: BotIntent | "SHOW_CARD";
+  message: string;
+  products: Product[];
+  role: TenantRole;
+  tenantId: string;
+}
+
+export interface QBotContext {
+  /** Must be derived from a trusted membership lookup, never from chat text. */
+  role?: TenantRole;
+  tenantId?: string;
+  uid?: string;
+}
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi");
@@ -25,12 +41,38 @@ function containsPhrase(query: string, phrase: string) {
   return words.some((_, index) => phraseWords.every((word, offset) => words[index + offset] === word));
 }
 
-export function parseQBotQuery(raw: string, products: Product[], vocabulary: BotVocabulary = copyDefaultVocabulary()): QBotResult {
+export function parseQBotQuery(
+  raw: string,
+  products: Product[],
+  vocabulary: BotVocabulary = copyDefaultVocabulary(),
+  context: QBotContext = {},
+): QBotResult {
+  const role = context.role ?? "worker";
+  const tenantId = context.tenantId ?? DEFAULT_TENANT_ID;
+  const respond = (intent: BotIntent | "SHOW_CARD", message: string, resultProducts: Product[] = []): QBotResult =>
+    ({ intent, message, products: resultProducts, role, tenantId });
   const query = normalize(raw.replace(/@q\b/gi, " ")).trim();
-  const normalizedProducts = products.map((product) => {
-    const fields = [product.id, product.name, product.brand, product.color, product.category, product.location, ...product.size, ...(product.search_keywords ?? [])];
-    return { product, id: compact(product.id), idDigits: digits(compact(product.id)), searchable: compact(fields.join(" ")) };
-  });
+
+  // Privacy policy: neither role may retrieve individual worker earnings or confidential records.
+  const permission = classifyQBotPermission(query);
+  if (permission === "financial_detail" || permission === "other_worker_earnings" || permission === "confidential_document") {
+    return respond("SEARCH", "Từ chối vì lý do bảo mật: Q-Bot không cung cấp dữ liệu tài chính cá nhân hoặc tài liệu mật.");
+  }
+  if (role === "worker" && permission === "tenant_overview") {
+    return respond("SEARCH", "Bạn không có quyền xem báo cáo tổng hợp hoặc dữ liệu vận hành toàn xưởng.");
+  }
+  if (permission === "personal_wallet") {
+    return role === "worker"
+      ? respond("SEARCH", "Ví thu nhập chỉ hiển thị cho chính bạn trong khu vực Ví cá nhân sau khi đăng nhập đúng tài khoản.")
+      : respond("SEARCH", "Q-Bot không cung cấp dữ liệu ví cá nhân qua chat.");
+  }
+
+  const normalizedProducts = products
+    .filter((product) => (product.tenantId ?? DEFAULT_TENANT_ID) === tenantId)
+    .map((product) => {
+      const fields = [product.id, product.name, product.brand, product.color, product.category, product.location, ...product.size, ...(product.search_keywords ?? [])];
+      return { product, id: compact(product.id), idDigits: digits(compact(product.id)), searchable: compact(fields.join(" ")) };
+    });
   const commandWords = new Set([
     "id", "ma", "hang", "doi", "cai", "mau", "san", "pham", "tim", "kiem", "giup", "cho", "minh",
     "con", "bao", "nhieu", "may", "ton", "so", "luong", "hien", "tai", "o", "dau", "nao", "khong",
@@ -46,8 +88,8 @@ export function parseQBotQuery(raw: string, products: Product[], vocabulary: Bot
   const tokens = (search.match(/[a-z0-9]+/g) ?? []).filter((word) => !commandWords.has(word));
 
   if (!tokens.length) {
-    if (greetingIntent) return { intent: "GREETING", products: [], message: choose(vocabulary.responses.GREETING, "Chào bạn! Q-Dcom sẵn sàng tra cứu kho.") };
-    return { intent: "SEARCH", products: [], message: choose(vocabulary.responses.NOT_FOUND, "Mình chưa tìm thấy mẫu hàng phù hợp.") };
+    if (greetingIntent) return respond("GREETING", choose(vocabulary.responses.GREETING, "Chào bạn! Q-Dcom sẵn sàng tra cứu kho."));
+    return respond("SEARCH", choose(vocabulary.responses.NOT_FOUND, "Mình chưa tìm thấy mẫu hàng phù hợp."));
   }
 
   const matches = normalizedProducts.filter(({ idDigits, searchable }) => tokens.every((token) => {
@@ -59,12 +101,12 @@ export function parseQBotQuery(raw: string, products: Product[], vocabulary: Bot
 
   const found = matches.slice(0, 4).map(({ product }) => product);
   if (found.length && quantityIntent) {
-    return { intent: "CHECK_QUANTITY", products: found, message: `Mẫu ${found[0].name} (ID: ${found[0].id}) hiện còn ${found[0].quantity} sản phẩm trong kho.` };
+    return respond("CHECK_QUANTITY", `Mẫu ${found[0].name} (ID: ${found[0].id}) hiện còn ${found[0].quantity} sản phẩm trong kho.`, found);
   }
   if (found.length && locationIntent) {
-    return { intent: "CHECK_LOCATION", products: found, message: `Mẫu ID ${found[0].id} đang được đặt tại ${found[0].location}.` };
+    return respond("CHECK_LOCATION", `Mẫu ID ${found[0].id} đang được đặt tại ${found[0].location}.`, found);
   }
-  if (found.length) return { intent: "SHOW_CARD", products: found, message: `Mình tìm thấy ${found.length} mẫu phù hợp.` };
-  if (greetingIntent) return { intent: "GREETING", products: [], message: choose(vocabulary.responses.GREETING, "Chào bạn! Q-Dcom sẵn sàng tra cứu kho.") };
-  return { intent: "SEARCH", products: [], message: choose(vocabulary.responses.NOT_FOUND, "Mình chưa tìm thấy mẫu hàng phù hợp.") };
+  if (found.length) return respond("SHOW_CARD", `Mình tìm thấy ${found.length} mẫu phù hợp.`, found);
+  if (greetingIntent) return respond("GREETING", choose(vocabulary.responses.GREETING, "Chào bạn! Q-Dcom sẵn sàng tra cứu kho."));
+  return respond("SEARCH", choose(vocabulary.responses.NOT_FOUND, "Mình chưa tìm thấy mẫu hàng phù hợp."));
 }
