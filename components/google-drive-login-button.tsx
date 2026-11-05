@@ -14,7 +14,7 @@ function GoogleMark() {
   );
 }
 
-export function GoogleDriveLoginButton({
+export function GoogleSignInButton({
   label,
   onAuthorized,
   onError,
