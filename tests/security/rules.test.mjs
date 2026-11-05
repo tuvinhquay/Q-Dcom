@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 
 const rules = readFileSync(resolve(process.cwd(), "../../firestore.rules"), "utf8");
 const env = await initializeTestEnvironment({
@@ -41,8 +41,22 @@ try {
     await setDoc(doc(db, "tenants", "tenant-b", "purchaseOrders", "po-b"), {
       tenantId: "tenant-b", poCode: "PO-B", productName: "Quần", totalQuantity: 100, dueAt: "2026-11-01",
     });
+    await setDoc(doc(db, "tenants", "tenant-a", "operationRates", "po-a__sew"), {
+      tenantId: "tenant-a", purchaseOrderId: "po-a", operationId: "sew", operationName: "May", unitRate: 2500,
+    });
+    await setDoc(doc(db, "tenants", "tenant-a", "productionEntries", "entry-existing"), {
+      tenantId: "tenant-a", workerUid: "worker-a", workerName: "Worker A", purchaseOrderId: "po-a",
+      operationId: "sew", operationName: "May", quantity: 5, workDate: "2026-10-27", status: "pending", submittedAt: stamp,
+    });
+    await setDoc(doc(db, "tenants", "tenant-a", "productionEntries", "entry-worker-b"), {
+      tenantId: "tenant-a", workerUid: "worker-b", workerName: "Worker B", purchaseOrderId: "po-a",
+      operationId: "sew", operationName: "May", quantity: 3, workDate: "2026-10-27", status: "pending", submittedAt: stamp,
+    });
     await setDoc(doc(db, "tenants", "tenant-a", "earnings", "worker-a"), {
       tenantId: "tenant-a", workerUid: "worker-a", approvedQuantity: 50, approvedEarnings: 500000,
+    });
+    await setDoc(doc(db, "tenants", "tenant-a", "earnings", "worker-a", "periods", "month_2026-10"), {
+      tenantId: "tenant-a", workerUid: "worker-a", period: "month", periodKey: "2026-10", approvedQuantity: 50, approvedEarnings: 500000,
     });
     await setDoc(doc(db, "tenants", "tenant-a", "workerExtras", "pending-extra"), {
       tenantId: "tenant-a", workerUid: "worker-a", status: "pending", amount: 50000, description: "Tăng ca",
@@ -107,6 +121,19 @@ try {
   await assertSucceeds(getDoc(doc(workerA, "tenants", "tenant-a", "earnings", "worker-a")));
   await assertFails(getDoc(doc(adminA, "tenants", "tenant-a", "earnings", "worker-a")));
   await assertFails(getDoc(doc(workerB, "tenants", "tenant-a", "earnings", "worker-a")));
+  await assertSucceeds(getDoc(doc(workerA, "tenants", "tenant-a", "earnings", "worker-a", "periods", "month_2026-10")));
+  await assertFails(getDoc(doc(workerB, "tenants", "tenant-a", "earnings", "worker-a", "periods", "month_2026-10")));
+  await assertFails(getDoc(doc(adminA, "tenants", "tenant-a", "earnings", "worker-a", "periods", "month_2026-10")));
+  // Operation rates are confidential: Admin can read them, Worker cannot.
+  await assertSucceeds(getDoc(doc(adminA, "tenants", "tenant-a", "operationRates", "po-a__sew")));
+  await assertFails(getDoc(doc(workerA, "tenants", "tenant-a", "operationRates", "po-a__sew")));
+  await assertFails(setDoc(doc(workerA, "tenants", "tenant-a", "operationRates", "forged-rate"), {
+    tenantId: "tenant-a", purchaseOrderId: "po-a", operationId: "press", operationName: "Ép", unitRate: 999999,
+  }));
+  // Production records are private to their worker unless read by an Admin.
+  await assertSucceeds(getDoc(doc(workerA, "tenants", "tenant-a", "productionEntries", "entry-existing")));
+  await assertFails(getDoc(doc(workerA, "tenants", "tenant-a", "productionEntries", "entry-worker-b")));
+  await assertSucceeds(getDoc(doc(adminA, "tenants", "tenant-a", "productionEntries", "entry-existing")));
   await assertSucceeds(getDoc(doc(adminA, "tenants", "tenant-a", "workerExtras", "pending-extra")));
   await assertFails(getDoc(doc(adminA, "tenants", "tenant-a", "workerExtras", "approved-extra")));
   await assertFails(getDoc(doc(workerB, "tenants", "tenant-a", "workerExtras", "pending-extra")));
@@ -124,6 +151,15 @@ try {
   }));
   await assertFails(setDoc(doc(workerA, "tenants", "tenant-a", "earnings", "worker-a"), {
     tenantId: "tenant-a", workerUid: "worker-a", approvedQuantity: 999999, approvedEarnings: 999999999,
+  }));
+  await assertFails(updateDoc(doc(workerA, "tenants", "tenant-a", "productionEntries", "entry-existing"), {
+    status: "approved", reviewedAt: serverTimestamp(), reviewedBy: "worker-a",
+  }));
+  await assertSucceeds(updateDoc(doc(adminA, "tenants", "tenant-a", "productionEntries", "entry-existing"), {
+    status: "approved", reviewedAt: serverTimestamp(), reviewedBy: "admin-a",
+  }));
+  await assertFails(updateDoc(doc(adminA, "tenants", "tenant-a", "productionEntries", "entry-existing"), {
+    quantity: 999999,
   }));
 
   console.log("PASS: tenant isolation, worker identity, private earnings, pending-extra review, and tenant chat rules.");
