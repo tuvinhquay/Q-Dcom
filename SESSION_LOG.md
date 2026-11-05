@@ -812,3 +812,29 @@
 - Đây là Technical CI PASS cho phần tách Google identity khỏi Drive consent và logout best-effort. Chưa có Firebase live test nên chưa đánh dấu Practical PASS hoặc hoàn tất Batch B.
 - Đã tăng ước lượng tiến độ tổng thể từ 35% lên khoảng 36%; chỉ là ước lượng quản trị theo bằng chứng.
 - Tiếp theo: smoke test Firebase trên thiết bị; sau đó tiếp tục Batch B thẻ ID công ty + mật khẩu riêng theo quy trình kích hoạt chống chiếm mã, password hashing/salt, rate limit và reset an toàn.
+
+
+## Phiên 2026-11-05 — Batch C/D: mở rộng kiểm thử bảo mật PO, sản lượng và Worker Wallet
+
+### Rà soát và phạm vi
+- Đọc lại bảng tiến độ, nhật ký phiên, kiến trúc xác thực, README và các phần mã nguồn hiện hành trước khi tiếp tục.
+- Xác minh PR #2/#3/#4 vẫn Draft, chưa merge; PR #4 HEAD `1c237bf38a0627ce46e346bb5da3b32b16fef6bc` có GitHub Actions Validate run `42023330260` (run #148) completed/success. Các bước lint, TypeScript, Next.js build, Functions build và Firestore Rules Emulator đều PASS; Vercel Preview Ready.
+- Audit code hiện tại xác nhận PO, production entries, worker extras, private earnings và Cloud Functions triggers đã có nền tảng, nhưng thiếu test Rules tập trung cho một số ranh giới dữ liệu nhạy cảm.
+
+### Thực hiện
+- Tạo nhánh `feature/batch-cd-workshop-security-regression-2026-11-05` từ nhánh Batch B đã kiểm tra; mở PR #5 Draft: https://github.com/tuvinhquay/Q-Dcom/pull/5.
+- Mở rộng `tests/security/rules.test.mjs`: Admin được đọc operationRates, Worker không được đọc/ghi đơn giá; kỳ thu nhập chỉ Worker sở hữu đọc được; Worker không đọc sản lượng của Worker khác; Admin được đọc sản lượng; Worker không tự duyệt; Admin có thể đổi trạng thái duyệt nhưng không thể sửa số lượng.
+- Không thay đổi Firestore Rules hoặc nghiệp vụ đang chạy; không sửa schema, không xóa dữ liệu/chức năng cũ, không deploy Firebase production.
+- Commit: `32e32678fc91a92181b831d378ea20ecd8841466`.
+- Cập nhật `TIEN_DO_DU_AN.md` ngay trong nhánh làm việc, ghi rõ CI của test mới còn pending và chưa tăng % tiến độ.
+
+### Validation và giới hạn
+- CI PR #5 chưa được xác minh tại thời điểm ghi log; không đánh dấu test mới PASS trước khi Firestore Rules Emulator chạy xong.
+- PR #5 xếp chồng từ PR #4, GitHub trả mergeable=false do chuỗi PR nền chưa được tích hợp; không merge riêng PR #5.
+- Chưa có Firebase live/Android smoke test. Batch B employee card + password chưa hoàn thành; luồng kích hoạt an toàn cần chốt. Batch E vẫn chưa có Recovery Key, mã hóa và restore round-trip đầy đủ.
+
+### Điểm tiếp tục
+1. Kiểm tra CI của PR #5 đúng HEAD; nếu FAIL, đọc log, sửa và chạy lại.
+2. Nếu PASS, cập nhật tài liệu trạng thái test; tiếp tục kiểm tra PO/production/extra/earnings UI và nghiệp vụ thực tế.
+3. Trước khi triển khai thẻ ID + mật khẩu, cần chốt phương thức Admin cấp mã kích hoạt một lần cho từng nhân viên (không dùng mã thẻ đơn lẻ để tự đăng ký, tránh chiếm tài khoản).
+4. Không merge PR hoặc deploy production nếu chưa có xác nhận rõ ràng.
