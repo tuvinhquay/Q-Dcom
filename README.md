@@ -34,7 +34,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
 
 Trong Firebase Console, chỉ bật Google trong Authentication > Sign-in method, đồng thời thêm domain ứng dụng vào Authorized domains. Anonymous Auth không được sử dụng; Firestore rules từ chối mọi phiên anonymous. Các biến cấu hình Firebase `NEXT_PUBLIC_*` được nhúng vào bundle trình duyệt; không đặt secret/token nhạy cảm vào những biến này. Khai báo các biến tương ứng trong môi trường deploy.
 
-Đăng nhập Google dùng Firebase Auth popup và yêu cầu scope `drive.appdata` để lưu backup trong vùng dữ liệu riêng, cùng `drive.metadata.readonly` để đọc thanh dung lượng Drive. Bật Google Drive API và, nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console. Token chỉ được giữ trong bộ nhớ ứng dụng khi đồng bộ.
+Đăng nhập Google dùng Firebase Auth popup và **không yêu cầu quyền Google Drive**. Nếu muốn sao lưu lên Drive, người dùng chủ động chọn **Kết nối Google Drive** trong Cài đặt; Q-Dcom mở bước xác thực lại để xin riêng hai scope `drive.appdata` và `drive.metadata.readonly`. Token Drive chỉ được giữ trong bộ nhớ ứng dụng. Bật Google Drive API và, nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console.
 
 Firebase Auth là hộ chiếu Google cho danh bạ và chat. Đăng ký/đăng nhập bằng ID cá nhân vẫn hoạt động ngoại tuyến nhưng hồ sơ chỉ nằm trên thiết bị; hồ sơ này không cấp quyền Firebase và không được đồng bộ qua máy chủ.
 
@@ -83,3 +83,13 @@ Sidebar dùng viền gradient, nền kính blur, glow và hiệu ứng trượt 
 ## Video nền
 
 Thêm các video MP4 tùy chọn theo tên `login-bg-video.mp4` (màn đăng nhập) và `app-bg-video.mp4` (dashboard) vào `public/videos/`. Giao diện nền tĩnh vẫn hoạt động nếu chưa có tệp.
+
+## Quản lý sản lượng xưởng theo tenant
+
+Nhánh tính năng `feature/new-feature-foundation-2026-10-27` bổ sung khu vực **Sản lượng xưởng** gồm dashboard Admin/Worker, PO và đơn giá công đoạn, báo cáo sản lượng, phụ phí chờ duyệt, ví thu nhập riêng tư, QR PO và chat xưởng có `tenantId`.
+
+- Kiến trúc: [SO_DO_CAU_TRUC_TONG_QUAT.md](SO_DO_CAU_TRUC_TONG_QUAT.md)
+- Nhật ký phiên: [SESSION_LOG.md](SESSION_LOG.md)
+- Firebase rules: `firestore.rules`; indexes: `firestore.indexes.json`; Cloud Functions: `functions/`
+- Kiểm thử rules: `tests/security/rules.test.mjs` chạy bằng Firestore Emulator.
+- **Chưa triển khai production**: trước khi dùng dữ liệu thật cần deploy rules/indexes/functions và xác nhận quyền Firebase/Google OAuth. Admin không được đọc tài liệu earnings cá nhân; ví được tính phía máy chủ và chỉ Worker sở hữu mới đọc được.
