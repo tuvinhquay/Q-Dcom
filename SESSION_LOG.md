@@ -801,3 +801,14 @@
 - PR #4 Draft, HEAD `7769616e253da57a2c9517f55364748267260040`, mergeable=true; không merge.
 - GitHub Actions Validate run `42022790443` đã được tạo và đang chạy; tại lần đọc gần nhất mới hoàn tất checkout + setup Node, đang cài dependencies. Các bước lint, TypeScript, Next build, Functions build và Firestore Emulator còn pending.
 - Hai Vercel preview checks vẫn pending. Không ghi PASS và chưa tăng tiến độ tổng thể.
+
+
+## Xác minh cuối phiên 2026-11-05 — CI PASS cho Batch B2 phụ
+
+- Commit HEAD cuối: `df10bd59769bbea0baa51bbbb593b999dd30ee4e` trên `feature/batch-b-google-drive-consent-2026-11-05`.
+- GitHub Actions Validate run `42023073845` hoàn tất `success`: Install dependencies, ESLint, TypeScript, Next.js build, Firebase Functions dependencies/build, Java setup và Firestore Rules Emulator đều PASS.
+- Hai Vercel preview status checks đều `success`.
+- PR #4 vẫn Open/Draft, mergeable, chưa merge. PR #3 và PR #2 vẫn chưa merge. Không sửa `main`, không deploy Firebase production.
+- Đây là Technical CI PASS cho phần tách Google identity khỏi Drive consent và logout best-effort. Chưa có Firebase live test nên chưa đánh dấu Practical PASS hoặc hoàn tất Batch B.
+- Đã tăng ước lượng tiến độ tổng thể từ 35% lên khoảng 36%; chỉ là ước lượng quản trị theo bằng chứng.
+- Tiếp theo: smoke test Firebase trên thiết bị; sau đó tiếp tục Batch B thẻ ID công ty + mật khẩu riêng theo quy trình kích hoạt chống chiếm mã, password hashing/salt, rate limit và reset an toàn.
