@@ -17,7 +17,7 @@ import { BackgroundVideo } from "@/components/background-video";
 import { CommunityChat } from "@/components/community-chat";
 import { WorkshopDashboard } from "@/components/workshop-dashboard";
 import { GlassmorphismAnimationBackground } from "@/components/glassmorphism-animation-background";
-import { GoogleDriveLoginButton } from "@/components/google-drive-login-button";
+import { GoogleDriveConnectButton, GoogleDriveLoginButton } from "@/components/google-drive-login-button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductImage } from "@/components/products/ProductImage";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
@@ -25,7 +25,7 @@ import { SearchBar } from "@/components/search/SearchBar";
 import { parseQBotQuery } from "@/lib/bot/qBotParser";
 import { copyDefaultVocabulary, type BotIntent, type BotVocabulary } from "@/lib/bot/vocabulary";
 import { qdcomDB, type QDcomMember } from "@/lib/db/qdcomDB";
-import { getFirebaseAuth, isFirebaseConfigured, signOutFirebaseUser, type GoogleAuthSession } from "@/lib/firebase";
+import { getFirebaseAuth, isFirebaseConfigured, signOutFirebaseUser, type GoogleAuthSession, type GoogleDriveSession } from "@/lib/firebase";
 import { parseBackup, parseSharePayload, serializeBackup, createSharePayload } from "@/lib/sync/qdcomSync";
 import { getGoogleDriveStorageQuota, syncBackupToGoogleDrive, type GoogleDriveStorageQuota } from "@/lib/sync/googleDriveBackup";
 import { savePublicUserProfile } from "@/lib/services/gatekeeperService";
@@ -387,32 +387,26 @@ export function QDcomApp() {
     storeVocabulary({ ...vocabulary, intents: { ...vocabulary.intents, [intent]: vocabulary.intents[intent].filter((item) => item !== word) } });
   }
   async function handleGoogleAuthorization(session: GoogleAuthSession) {
-    const { user, accessToken } = session;
-    const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) throw new Error(`Không thể lấy hồ sơ Google (HTTP ${response.status}).`);
-    const claims = await response.json() as { sub?: unknown; name?: unknown; email?: unknown; picture?: unknown; email_verified?: unknown };
-    if (typeof claims.sub !== "string" || typeof claims.email !== "string" || claims.email_verified !== true) {
-      throw new Error("Hồ sơ Google chưa xác minh email.");
+    const { user } = session;
+    const googleProvider = user.providerData.find(({ providerId }) => providerId === "google.com");
+    if (user.isAnonymous || !googleProvider || !user.email || !user.emailVerified) {
+      throw new Error("Tài khoản Google chưa xác minh email hoặc không hợp lệ.");
     }
-    if (user.isAnonymous || !user.providerData.some(({ providerId }) => providerId === "google.com")) {
-      throw new Error("Q-Dcom chỉ cho phép tài khoản Google thực đã xác thực.");
-    }
-    if (userProfile?.googleSub && userProfile.googleSub !== claims.sub) {
+    if (userProfile?.googleSub && userProfile.googleSub !== googleProvider.uid) {
       await signOutFirebaseUser();
-      throw new Error("Tài khoản Google này khác với tài khoản đang đăng nhập. Hãy chọn đúng tài khoản để đồng bộ dữ liệu.");
+      throw new Error("Tài khoản Google này khác với tài khoản đang đăng nhập. Hãy chọn đúng tài khoản.");
     }
+
     const memberId = userProfile?.memberId?.trim();
     const publicMemberId = memberId && memberId.length <= 64 ? memberId : user.uid.slice(0, 16);
-    const profileName = typeof claims.name === "string" ? claims.name : claims.email;
+    const profileName = user.displayName || user.email;
     const profile: UserProfile = {
       peerId: user.uid,
       firebaseUid: user.uid,
-      googleSub: claims.sub,
+      googleSub: googleProvider.uid,
       displayName: profileName,
-      email: claims.email,
-      avatar: typeof claims.picture === "string" && claims.picture.startsWith("https://") ? claims.picture : "",
+      email: user.email,
+      avatar: user.photoURL?.startsWith("https://") ? user.photoURL : "",
       memberId: publicMemberId,
       specialty: userProfile?.specialty,
     };
@@ -422,16 +416,32 @@ export function QDcomApp() {
       await signOutFirebaseUser();
       throw error;
     }
+
     window.localStorage.setItem(PEER_KEY, profile.peerId);
     window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-    driveAccessToken.current = accessToken;
-    setDriveConnected(true);
-    setDriveSyncStatus("syncing");
+    // A fresh Google sign-in never implies Drive consent or a Drive access token.
+    driveAccessToken.current = null;
+    setDriveConnected(false);
+    setDriveSyncStatus("idle");
+    setDriveSyncMessage("");
     setDriveQuota(null);
-    void refreshDriveQuota(accessToken);
+    setDriveQuotaError("");
     setUserProfile(profile);
     setPage("inventory");
-    notify(`Đã đăng nhập Google: ${profile.displayName}. Đang sao lưu dữ liệu lên Google Drive.`);
+    notify(`Đã đăng nhập Google: ${profile.displayName}. Quyền Google Drive là tùy chọn và được cấp riêng trong Cài đặt.`);
+  }
+  async function handleGoogleDriveAuthorization(session: GoogleDriveSession) {
+    if (!userProfile?.firebaseUid || session.user.uid !== userProfile.firebaseUid) {
+      throw new Error("Tài khoản Drive không trùng với tài khoản Google đang đăng nhập Q-Dcom.");
+    }
+    driveAccessToken.current = session.accessToken;
+    setDriveConnected(true);
+    setDriveSyncStatus("idle");
+    setDriveSyncMessage("");
+    setDriveQuota(null);
+    setDriveQuotaError("");
+    await refreshDriveQuota(session.accessToken);
+    notify("Đã cấp quyền Google Drive. Tự động sao lưu hiện vẫn theo bộ dữ liệu backup hiện hành; bản mã hóa đầy đủ sẽ được hoàn thiện ở Batch E.");
   }
   async function refreshDriveQuota(accessToken: string) {
     try {
@@ -529,15 +539,13 @@ export function QDcomApp() {
   }
   async function logoutProfile() {
     if (userProfile && !userProfile.firebaseUid && !userProfile.googleSub &&
-      !window.confirm("Hãy nhấn Lưu trữ / Tải về bản sao dữ liệu trước khi thoát. Bạn đã lưu bản sao dữ liệu chưa?")) {
+      !window.confirm("Hãy xuất file backup cục bộ trước khi thoát. Bạn đã lưu bản sao dữ liệu chưa?")) {
       return;
     }
-    if (userProfile?.googleSub) {
+
+    // Backup is best-effort only. A Drive outage or revoked consent must never trap the user in a session.
+    if (userProfile?.googleSub && driveAccessToken.current) {
       const accessToken = driveAccessToken.current;
-      if (!accessToken) {
-        notify("Phiên Google Drive đã hết hạn. Hãy kết nối lại Google Drive trong Cài đặt trước khi đăng xuất để sao lưu dữ liệu mới nhất.");
-        return;
-      }
       try {
         setDriveSyncStatus("syncing");
         await syncCurrentDriveBackup(accessToken);
@@ -546,10 +554,10 @@ export function QDcomApp() {
         const message = error instanceof Error ? error.message : "Không thể sao lưu dữ liệu lên Google Drive.";
         setDriveSyncStatus("error");
         setDriveSyncMessage(message);
-        notify(`Chưa đăng xuất vì backup Drive thất bại: ${message}`);
-        return;
+        notify(`Backup Drive chưa hoàn tất, nhưng bạn vẫn có thể đăng xuất: ${message}`);
       }
     }
+
     try {
       await signOutFirebaseUser();
     } catch (error) {
@@ -724,7 +732,7 @@ export function QDcomApp() {
           <p className="local-login-note"><LockKeyhole /> Hồ sơ ID và kho được lưu trên thiết bị này. Cộng đồng chat cần đăng nhập Google.</p>
         </form>}
         <div className="login-divider"><span>{authMode === "register" ? "HOẶC ĐĂNG KÝ NHANH BẰNG" : "HOẶC ĐĂNG NHẬP NHANH BẰNG"}</span></div>
-        {isFirebaseConfigured ? <div className="google-login-wrap"><span className="google-login-label">Đăng nhập và sao lưu an toàn với Google</span><GoogleDriveLoginButton label="Đăng ký / Đăng nhập bằng Google" onAuthorized={handleGoogleAuthorization} onError={notify} /><span className="google-login-caption">Firebase chỉ xác thực Google; dữ liệu kho được giữ trong IndexedDB và backup riêng trên Drive.</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập Firebase Auth và bật nhà cung cấp đăng nhập Google.</p></div></div>}
+        {isFirebaseConfigured ? <div className="google-login-wrap"><span className="google-login-label">Đăng nhập bằng Google</span><GoogleDriveLoginButton label="Đăng ký / Đăng nhập bằng Google" onAuthorized={handleGoogleAuthorization} onError={notify} /><span className="google-login-caption">Đăng nhập Google không yêu cầu quyền Drive. Bạn có thể kết nối Drive riêng trong Cài đặt khi muốn sao lưu.</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập Firebase Auth và bật nhà cung cấp đăng nhập Google.</p></div></div>}
         <button className="auth-mode-toggle" type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); }}>
           {authMode === "register" ? "Đã có tài khoản? Đăng nhập" : "Chưa là thành viên? Đăng ký ngay"}
         </button>
@@ -821,7 +829,7 @@ export function QDcomApp() {
                 </div>
               </section>
               <section className="settings-card glass"><SettingsHead icon={<Video />} title="Giao diện & video nền" description="Đăng nhập: public/videos/login-bg-video.mp4 · Ứng dụng: public/videos/app-bg-video.mp4." /><div className="settings-card-body"><SettingSwitch title="Bật video nền" description="Nền tĩnh vẫn hiển thị khi chưa có tệp video." checked={settings.videoEnabled} onClick={() => saveSettings({ ...settings, videoEnabled: !settings.videoEnabled })} /><SettingRange title="Độ mờ kính" value={settings.glassBlur} min={0} max={32} suffix="px" onChange={(value) => saveSettings({ ...settings, glassBlur: value })} /><SettingRange title="Độ trong suốt" value={settings.glassOpacity} min={45} max={95} suffix="%" onChange={(value) => saveSettings({ ...settings, glassOpacity: value })} /><div className="setting-row"><div className="setting-copy"><strong>Màu phủ video</strong><small>Chọn sắc độ phủ nhẹ lên nền.</small></div><input className="tint-input" type="color" value={settings.videoTint} aria-label="Màu phủ video" onChange={(event) => saveSettings({ ...settings, videoTint: event.target.value })} /></div></div></section>
-              <section className="settings-card glass"><SettingsHead icon={<Users />} title="Tài khoản & hồ sơ" description="Hồ sơ được lưu trên thiết bị và chia sẻ qua mã QR." /><div className="settings-card-body">{userProfile ? <><div className="google-profile"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile.displayName}</strong><span>{userProfile.memberId ? `ID: ${userProfile.memberId}` : userProfile.email || "Khách"}</span></div></div>{userProfile.googleSub && (!driveConnected || driveSyncStatus === "error") && isFirebaseConfigured && <GoogleDriveLoginButton label="Kết nối lại Google Drive" onAuthorized={handleGoogleAuthorization} onError={notify} />}{driveSyncStatus === "error" && <p className="drive-sync-error" role="alert">{driveSyncMessage}</p>}<button type="button" className="secondary-btn" onClick={() => void logoutProfile()}><LogOut /> Đăng xuất</button></> : <p className="aside-note">Đăng nhập để quản lý hồ sơ và bật đồng bộ dữ liệu.</p>}</div></section>
+              <section className="settings-card glass"><SettingsHead icon={<Users />} title="Tài khoản & hồ sơ" description="Hồ sơ được lưu trên thiết bị và chia sẻ qua mã QR." /><div className="settings-card-body">{userProfile ? <><div className="google-profile"><ProfileAvatar profile={userProfile} /><div className="profile-copy"><strong>{userProfile.displayName}</strong><span>{userProfile.memberId ? `ID: ${userProfile.memberId}` : userProfile.email || "Khách"}</span></div></div>{userProfile.googleSub && (!driveConnected || driveSyncStatus === "error") && isFirebaseConfigured && <GoogleDriveConnectButton label="Kết nối Google Drive (tùy chọn)" onAuthorized={handleGoogleDriveAuthorization} onError={notify} />}{userProfile.googleSub && driveConnected && <p className="aside-note">Google Drive đã được cấp quyền riêng cho sao lưu.</p>}{driveSyncStatus === "error" && <p className="drive-sync-error" role="alert">{driveSyncMessage}</p>}<button type="button" className="secondary-btn" onClick={() => void logoutProfile()}><LogOut /> Đăng xuất</button></> : <p className="aside-note">Đăng nhập để quản lý hồ sơ và bật đồng bộ dữ liệu.</p>}</div></section>
               <section className="settings-card glass wide"><SettingsHead icon={<QrCode />} title="Trung tâm Đồng bộ & Thành viên Q-Dcom" description="Kết bạn và chuyển mẫu hàng trực tiếp bằng QR; backup đầy đủ bằng file JSON." /><div className="settings-card-body"><div className="sync-actions"><button type="button" className="primary-btn" onClick={openShareDialog}><QrCode /> Tạo mã QR chia sẻ</button><button type="button" className="secondary-btn" onClick={() => { setSyncError(""); setScannerOpen(true); }}><Camera /> Mở Camera Quét QR</button><button type="button" className="secondary-btn" onClick={() => void exportBackup()}><Download /> Xuất File Backup</button><button type="button" className="secondary-btn" onClick={() => backupInput.current?.click()}><Upload /> Nhập File Backup</button><input ref={backupInput} type="file" accept="application/json,.json" hidden onChange={(event) => void importBackup(event)} /></div><label className="backup-option"><input type="checkbox" checked={omitBackupImages} onChange={(event) => setOmitBackupImages(event.target.checked)} /><span><strong>Nén nhẹ (bỏ dữ liệu ảnh Base64)</strong><small>Áp dụng cho file backup JSON tải xuống; ảnh liên kết ngoài vẫn được giữ.</small></span></label><div><div className="field-label">Thành viên nhóm Q-Dcom · {members.length}</div>{members.length ? <div className="members-list">{members.map((member) => <div className="member-row" key={member.peerId}><MemberAvatar member={member} /><span className="member-copy"><strong>{member.displayName}</strong><small>{member.email || "Thành viên Q-Dcom"}</small></span><small className="member-date">{new Date(member.addedAt).toLocaleDateString("vi-VN")}</small></div>)}</div> : <p className="aside-note">Chưa có thành viên. Quét mã QR của một thành viên để thêm vào danh sách.</p>}</div></div></section>
               <section className="settings-card glass wide"><SettingsHead icon={<Bot />} title="Kho từ vựng Bot @q" description="Nạp từ mới: nhập từ/cụm từ, chọn nhóm ý định rồi nhấn Thêm từ." /><div className="settings-card-body"><form className="vocabulary-form" onSubmit={addWord}><input className="text-field" value={newWord} onChange={(event) => setNewWord(event.target.value)} placeholder="Nhập từ hoặc cụm từ mới…" aria-label="Từ mới" /><select className="select-field" value={newIntent} onChange={(event) => setNewIntent(event.target.value as Exclude<BotIntent,"SEARCH">)} aria-label="Nhóm ý định"><option value="CHECK_QUANTITY">Hỏi số lượng</option><option value="CHECK_LOCATION">Hỏi vị trí</option><option value="GREETING">Chào hỏi</option></select><button className="primary-btn"><Plus /> Thêm từ</button></form>
                 <div className="vocabulary-groups">{(["CHECK_QUANTITY","CHECK_LOCATION","GREETING"] as const).map((intent) => <div key={intent}><div className="field-label">{{CHECK_QUANTITY:"Tra cứu số lượng",CHECK_LOCATION:"Tra cứu vị trí",GREETING:"Lời chào"}[intent]}</div><div className="vocabulary-chips">{vocabulary.intents[intent].map((word) => <span className="vocabulary-chip" key={word}>{word}<button type="button" aria-label={`Xóa ${word}`} onClick={() => removeWord(intent,word)}><X /></button></span>)}</div></div>)}</div>
