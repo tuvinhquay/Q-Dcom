@@ -2,10 +2,18 @@
 
 > Bảng điều khiển hiện hành. Các quyết định xác thực chỉ được cập nhật theo xác nhận mới nhất của chủ dự án; lịch sử phiên cũ được giữ lại và đánh dấu đã được thay thế khi có mâu thuẫn.
 
-**Cập nhật gần nhất:** 2026-11-04 · Chốt định hướng hai phương thức đăng ký, Local-first và khôi phục dữ liệu.
-**Nhánh làm việc:** `feature/employee-card-pin-auth-2026-10-31`
-**PR:** #3 Draft — chưa merge.
+**Cập nhật gần nhất:** 2026-11-05 · Batch B — tách Google Sign-In khỏi quyền Google Drive; chờ CI xác minh.
+**Nhánh làm việc:** `feature/batch-b-google-drive-consent-2026-11-05`
+**PR nền:** #3 Draft — chưa merge. Nhánh Batch B hiện được tách riêng, không sửa `main`.
 **Nguyên tắc:** không sửa `main`, không merge PR hoặc deploy Firebase production nếu chưa được người dùng đồng ý.
+
+## Cập nhật Batch B — 2026-11-05 (mới nhất)
+
+- Đã tách Firebase Google Sign-In khỏi OAuth scope Google Drive: đăng nhập không xin `drive.appdata`/`drive.metadata.readonly`.
+- Đã thêm hành động kết nối Drive riêng bằng re-auth popup; xác minh UID Drive trùng UID Google đang đăng nhập.
+- Đã bỏ việc bắt buộc backup thành công mới cho đăng xuất; backup best-effort, lỗi Drive không giữ người dùng mắc kẹt trong phiên.
+- Trạng thái: **IMPLEMENTED — CHỜ CI**. Chưa đánh dấu PASS trước khi workflow Validate chạy trên commit/PR mới.
+- Giới hạn đã biết: backup service vẫn chỉ nén Gzip và serialize products/vocabulary/members; chưa dùng làm backup khôi phục đầy đủ. Batch E vẫn 🔴.
 
 ## Tổng quan hiện tại
 
@@ -13,10 +21,10 @@
 |---|---|---|
 | Xác thực và phân quyền Firebase | 🟡 | Firebase là cổng xác thực/ủy quyền; cần thiết kế lại để hỗ trợ cả tài khoản ID công ty + mật khẩu và Google |
 | Đăng ký bằng thẻ ID công ty | 🟡 | Giữ lại; mã thẻ công ty kết hợp mật khẩu riêng do người dùng tạo; phải xác minh thẻ với hồ sơ nhân viên phía server |
-| Đăng ký/đăng nhập Google | 🟡 | Giữ lại như lựa chọn độc lập; Firebase Auth xác minh Google; Membership quyết định quyền Tenant |
+| Đăng ký/đăng nhập Google | 🟡 | Đã tách luồng Firebase Google identity khỏi quyền Drive trong code; chờ CI và kiểm tra popup trên Firebase thật |
 | Loại bỏ PIN cũ | 🟢 | Chỉ loại bỏ PIN; không được hiểu là loại bỏ đăng nhập thẻ ID hoặc mật khẩu người dùng |
 | Q-Dcom Recovery Key | 🟡 | Đã chốt yêu cầu: cấp mã khôi phục riêng cho tài khoản ID công ty; thiết kế và triển khai chưa bắt đầu |
-| Google Drive backup/restore | 🟡 | Dành cho người dùng chọn Google và cấp quyền Drive; phải mã hóa, kiểm tra quyền và cô lập tenant |
+| Google Drive backup/restore | 🔴 | Consent Drive đã tách riêng trong code; backup hiện vẫn Gzip, chưa mã hóa và chưa đủ dữ liệu/restore an toàn |
 | Local-first data | 🟡 | Dữ liệu nghiệp vụ chính nằm trên thiết bị người dùng; tiếp tục rà soát Dexie/IndexedDB và mọi luồng ghi cloud hiện có |
 | CI / Firebase thật / Android smoke test | 🔵 | Chưa xác nhận kết quả mới cho toàn bộ kiến trúc hai phương thức; chưa có live smoke test |
 | PO và quy trình sản xuất | ⚪ | Chưa bắt đầu batch triển khai tiếp theo |
@@ -80,8 +88,8 @@ Q-Dcom có **hai lựa chọn đăng ký độc lập**:
 
 - [x] 🟢 B1. Hoàn tất bản thiết kế Authentication Gateway dùng chung cho Google OAuth và đăng nhập thẻ nhân viên trong `AUTHENTICATION_ARCHITECTURE.md`.
 - [x] 🟢 B2. Gateway xác minh Firebase Auth session + Membership; phân loại no-membership/member-disabled/tenant-disabled/membership-invalid/network-error; CI run `41213360712` PASS.
-- [ ] 🟡 B3. Dùng Firebase Auth xác minh danh tính; rà soát Firestore Rules và mọi Cloud Functions để bắt buộc kiểm tra UID + Tenant + Membership active + role. Không triển khai PIN/thẻ nhân viên.
-- [ ] 🟡 B4. Hoàn thiện luồng Admin liên kết Firebase UID chính chủ của Worker vào Membership; mã nhân viên không được dùng thay xác thực. Không phát hành Custom Token đăng nhập thẻ.
+- [ ] 🔴 B3. Triển khai đăng ký/đăng nhập thẻ ID công ty + mật khẩu riêng: xác minh mã thẻ/nhân viên/Tenant phía server, chống chiếm mã thẻ, password hash chuyên dụng + salt, rate limit và reset an toàn. Không khôi phục PIN cũ.
+- [ ] 🟡 B4. Hoàn thiện quy trình Admin/owner kích hoạt hoặc cấp thẻ cho đúng nhân viên và liên kết định danh ổn định vào Membership; không cho client tự khai UID/role/tenant.
 - [ ] ⚪ B5. Hợp nhất Membership và Tenant context; role lấy từ dữ liệu có thẩm quyền phía máy chủ.
 - [x] 🟢 B6. App shell đồng bộ Firebase Auth UID, không cấp role fallback; Dashboard hiển thị trạng thái xác minh rõ ràng. CI run `41213360712` PASS.
 - [ ] ⚪ B7. Đã bổ sung thu hồi principal/dữ liệu xưởng khi Auth đổi UID, refresh Membership/tenant không hợp lệ hoặc lỗi xác minh; cần kiểm tra runtime và hoàn thiện luồng revoke/expiry.
@@ -117,7 +125,7 @@ Q-Dcom có **hai lựa chọn đăng ký độc lập**:
 
 ### Giai đoạn E — Google Integration và sao lưu
 
-- [ ] ⚪ E1. Phân biệt trạng thái Google Sign-In, liên kết tài khoản Google và quyền Google Drive.
+- [x] 🟡 E1. Đã tách code Google Sign-In khỏi Drive consent; chờ CI và Firebase popup smoke test. Các luồng backup/restore vẫn thuộc E2/E3 và chưa PASS.
 - [ ] ⚪ E2. Hiển thị trạng thái liên kết thành công/thất bại/đang chờ và hướng dẫn khi thiếu quyền.
 - [ ] ⚪ E3. Rà soát backup/restore Google Drive theo tenant, tránh ghi đè chéo.
 - [ ] ⚪ E4. Kiểm thử backup, restore, lỗi mạng, quyền OAuth và dữ liệu lớn.
