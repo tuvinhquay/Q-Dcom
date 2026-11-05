@@ -781,3 +781,17 @@
 3. Thiết kế account identity ổn định cho cả hai phương thức và luồng kích hoạt thẻ có xác minh Admin/server để chống chiếm mã thẻ.
 4. Thiết kế Recovery Key/client-side encryption/backup restore theo từng batch nhỏ; test trước khi tích hợp UI.
 5. Giữ nguyên Dexie/IndexedDB, kho local-first, QR, chat, @Q Bot, PO và các chức năng cũ; regression trước mỗi commit.
+
+
+## Phiên 2026-11-05 — Batch B: tách Google Sign-In và Google Drive consent
+
+- Đọc lại TIEN_DO_DU_AN.md, SESSION_LOG.md, ROADMAP_AUDIT_2026-11-04.md, README.md và tài liệu kiến trúc trước khi sửa.
+- Xác nhận P0: Google sign-in đang xin Drive scopes ngay trong login; logout bị chặn nếu Drive token hết hạn hoặc backup thất bại.
+- Tạo nhánh feature/batch-b-google-drive-consent-2026-11-05 từ nhánh nền PR #3; mở PR #4 Draft để CI. Không merge, không deploy production.
+- Sửa lib/firebase.ts: signInWithGooglePopup chỉ xác thực Firebase Google identity, không xin Drive scopes; requestGoogleDriveAccess dùng reauthenticateWithPopup để xin Drive permission riêng và xác minh UID trùng khớp.
+- Sửa components/google-drive-login-button.tsx và components/qdcom-app.tsx: tách nút Google Sign-In khỏi nút Kết nối Google Drive tùy chọn trong Cài đặt; không coi Google identity là Drive consent.
+- Sửa logoutProfile: backup trước logout chỉ best-effort; Drive lỗi/hết token không chặn đăng xuất. Đổi tên control thành GoogleSignInButton cho đúng chức năng.
+- Cập nhật README.md, AUTHENTICATION_ARCHITECTURE.md, TIEN_DO_DU_AN.md; đánh dấu AUTH_MEMBERSHIP_DESIGN.md là tài liệu lịch sử bị thay thế vì còn nội dung PIN cũ.
+- Trạng thái hiện tại: source/docs đã commit lên branch; PR #4 Draft. Chưa có GitHub Actions run xác nhận ở lần kiểm tra gần nhất; Vercel statuses đang Pending. Không đánh dấu Technical PASS.
+- Giới hạn còn lại: Employee ID + password backend chưa triển khai; backup hiện vẫn Gzip, thiếu PO/sản lượng/phụ phí/tenant data, chưa mã hóa và chưa có restore round-trip. Batch B tổng thể vẫn chưa hoàn thành; Batch E vẫn 🔴.
+- Điểm tiếp theo: chờ CI đúng HEAD; nếu CI PASS, kiểm tra Firebase thật (Google login không xin Drive, Drive consent riêng, từ chối/thu hồi Drive không làm mất session, logout khi Drive lỗi). Sau đó tiếp tục thiết kế/thực hiện thẻ ID + mật khẩu với server-side activation/password hashing/rate-limit/reset.
