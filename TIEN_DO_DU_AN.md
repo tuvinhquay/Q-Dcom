@@ -2,10 +2,10 @@
 
 > Bảng điều khiển hiện hành. Các quyết định xác thực chỉ được cập nhật theo xác nhận mới nhất của chủ dự án; lịch sử phiên cũ được giữ lại và đánh dấu đã được thay thế khi có mâu thuẫn.
 
-**Cập nhật gần nhất:** 2026-11-05 · Batch B — tách Google Sign-In khỏi quyền Google Drive; GitHub Actions run `42023073845` PASS.
-**Tiến độ tổng thể:** khoảng 36% theo tiêu chí nghiệm thu có bằng chứng; đã tăng nhẹ sau khi Batch B phụ đạt CI PASS, vẫn chờ Firebase live smoke test.
-**Nhánh làm việc:** `feature/batch-b-google-drive-consent-2026-11-05`
-**PR:** #4 Draft (stack từ PR #3), chưa merge. PR #3 và #2 vẫn Draft; không sửa `main`.
+**Cập nhật gần nhất:** 2026-11-05 · Batch C/D — mở rộng Firestore Rules regression tests; CI đang chờ trên PR #5.
+**Tiến độ tổng thể:** khoảng 36% theo tiêu chí nghiệm thu có bằng chứng; Batch B2 phụ CI PASS, Batch C/D vừa bổ sung test bảo mật nhưng chưa có kết quả CI nên chưa tăng phần trăm.
+**Nhánh làm việc:** `feature/batch-cd-workshop-security-regression-2026-11-05`
+**PR:** #5 Draft (stack từ PR #4); PR #4, #3, #2 vẫn Draft; chưa merge, không sửa `main`.
 **Nguyên tắc:** không sửa `main`, không merge PR hoặc deploy Firebase production nếu chưa được người dùng đồng ý.
 
 ## Cập nhật Batch B — 2026-11-05 (mới nhất)
@@ -15,6 +15,14 @@
 - Đã bỏ việc bắt buộc backup thành công mới cho đăng xuất; backup best-effort, lỗi Drive không giữ người dùng mắc kẹt trong phiên.
 - Trạng thái: **IMPLEMENTED — CI PASS** trên HEAD `df10bd59769bbea0baa51bbbb593b999dd30ee4e`. GitHub Actions Validate run `42023073845` PASS toàn bộ: lint, TypeScript, Next build, Functions build và Firestore Rules Emulator. Hai Vercel preview checks cũng success. Chưa có Firebase live popup/revoke test hoặc Android smoke test, nên Batch B tổng thể chưa PASS.
 - Giới hạn đã biết: backup service vẫn chỉ nén Gzip và serialize products/vocabulary/members; chưa dùng làm backup khôi phục đầy đủ. Batch E vẫn 🔴.
+
+## Cập nhật Batch C/D — 2026-11-05
+
+- Đã bổ sung Firestore Rules Emulator cases cho quyền đọc đơn giá công đoạn (Admin-only), kỳ thu nhập (chỉ Worker sở hữu), sản lượng (Worker chỉ đọc dữ liệu của mình), và quyền duyệt sản lượng (Worker không tự duyệt; Admin không được sửa số lượng khi duyệt).
+- Không thay đổi nghiệp vụ, schema, dữ liệu Dexie, Rules hoặc Firebase production; đây là bổ sung regression tests.
+- Commit test: `32e32678fc91a92181b831d378ea20ecd8841466`; PR #5 Draft: https://github.com/tuvinhquay/Q-Dcom/pull/5.
+- CI run cho PR #5 đang chờ. Chỉ khi Firestore Rules Emulator chạy PASS mới đánh dấu phần kiểm thử này Technical PASS.
+- PR #5 xếp chồng từ PR #4; GitHub hiện báo mergeable=false do các PR nền chưa tích hợp. Không merge riêng lẻ hoặc đổi base khi chưa rà soát chuỗi PR.
 
 ## Tổng quan hiện tại
 
