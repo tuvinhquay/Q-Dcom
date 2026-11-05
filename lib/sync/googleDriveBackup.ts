@@ -29,20 +29,23 @@ async function gzip(contents: string): Promise<Blob> {
   return new Response(source.pipeThrough(new CompressionStream("gzip"))).blob();
 }
 
-export async function syncBackupToGoogleDrive(accessToken: string, contents: string): Promise<void> {
+export async function syncBackupToGoogleDrive(accessToken: string, contents: string, tenantId = "local-default"): Promise<void> {
   const headers = authorization(accessToken);
+  const safeTenantId = tenantId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120) || "local-default";
+  // Keep the legacy backup filename for the default tenant and isolate each additional tenant.
+  const backupName = safeTenantId === "local-default" ? BACKUP_NAME : `Q-Dcom_Backup_${safeTenantId}.json.gz`;
   const query = new URLSearchParams({
     spaces: "appDataFolder",
     pageSize: "10",
     fields: "files(id,name)",
-    q: "name contains 'Q-Dcom_Backup' and 'appDataFolder' in parents and trashed = false",
+    q: `name = '${backupName}' and 'appDataFolder' in parents and trashed = false`,
   });
   const listResponse = await checkedFetch(`${DRIVE_FILES_API}?${query}`, { headers });
   const listing = await listResponse.json() as { files?: Array<{ id?: string; name?: string }> };
   const existingFileId = listing.files?.find((file) => typeof file.id === "string")?.id;
   const compressed = await gzip(contents);
   const metadata = {
-    name: BACKUP_NAME,
+    name: backupName,
     mimeType: "application/gzip",
     ...(existingFileId ? {} : { parents: ["appDataFolder"] }),
   };
