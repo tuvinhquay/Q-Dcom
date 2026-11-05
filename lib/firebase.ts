@@ -2,6 +2,7 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
+  reauthenticateWithPopup,
   signInWithPopup,
   signOut,
   type Auth,
@@ -46,30 +47,58 @@ export function getFirebaseFirestore(): Firestore {
   return firestore;
 }
 
-const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope("https://www.googleapis.com/auth/drive.appdata");
-googleProvider.addScope("https://www.googleapis.com/auth/drive.metadata.readonly");
-googleProvider.setCustomParameters({ prompt: "select_account" });
+// Google identity authentication deliberately requests no Google Drive scopes.
+const googleSignInProvider = new GoogleAuthProvider();
+googleSignInProvider.setCustomParameters({ prompt: "select_account" });
+
+const googleDriveProvider = new GoogleAuthProvider();
+googleDriveProvider.addScope("https://www.googleapis.com/auth/drive.appdata");
+googleDriveProvider.addScope("https://www.googleapis.com/auth/drive.metadata.readonly");
+googleDriveProvider.setCustomParameters({ prompt: "consent select_account" });
 
 export interface GoogleAuthSession {
+  user: User;
+}
+
+export interface GoogleDriveSession {
   user: User;
   accessToken: string;
 }
 
+function isGoogleUser(user: User): boolean {
+  return !user.isAnonymous && user.providerData.some(
+    ({ providerId }) => providerId === GoogleAuthProvider.PROVIDER_ID,
+  );
+}
+
+/** Authenticate identity only. Drive access is requested separately by the user. */
 export async function signInWithGooglePopup(): Promise<GoogleAuthSession> {
-  const result = await signInWithPopup(getFirebaseAuth(), googleProvider);
-  const user = result.user;
-  if (user.isAnonymous || !user.providerData.some(({ providerId }) => providerId === GoogleAuthProvider.PROVIDER_ID)) {
+  const result = await signInWithPopup(getFirebaseAuth(), googleSignInProvider);
+  if (!isGoogleUser(result.user)) {
     await signOut(getFirebaseAuth());
     throw new Error("Q-Dcom chỉ cho phép đăng nhập bằng tài khoản Google.");
+  }
+  return { user: result.user };
+}
+
+/** Request optional Drive permission for the already authenticated Google identity. */
+export async function requestGoogleDriveAccess(): Promise<GoogleDriveSession> {
+  const authInstance = getFirebaseAuth();
+  const currentUser = authInstance.currentUser;
+  if (!currentUser || !isGoogleUser(currentUser)) {
+    throw new Error("Hãy đăng nhập Google trước khi kết nối Google Drive.");
+  }
+
+  const result = await reauthenticateWithPopup(currentUser, googleDriveProvider);
+  if (result.user.uid !== currentUser.uid || !isGoogleUser(result.user)) {
+    throw new Error("Tài khoản Google xác thực Drive không khớp với tài khoản Q-Dcom hiện tại.");
   }
 
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (!credential?.accessToken) {
-    await signOut(getFirebaseAuth());
-    throw new Error("Firebase không trả về Google OAuth access token cho Google Drive.");
+    throw new Error("Google chưa cấp quyền Drive. Bạn có thể tiếp tục dùng Q-Dcom mà không cần Drive.");
   }
-  return { user, accessToken: credential.accessToken };
+  return { user: result.user, accessToken: credential.accessToken };
 }
 
 export async function signOutFirebaseUser(): Promise<void> {
