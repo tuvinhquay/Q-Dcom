@@ -1,3 +1,5 @@
+> **TÀI LIỆU LỊCH SỬ — KHÔNG DÙNG LÀM HƯỚNG DẪN TRIỂN KHAI HIỆN HÀNH.** Nội dung PIN/Custom Token bên dưới là phương án cũ, đã bị thay thế bởi quyết định 2026-11-04. Thiết kế hiện hành: thẻ ID công ty + mật khẩu riêng và Google là hai phương thức độc lập; chỉ loại bỏ PIN cũ. Xem `AUTHENTICATION_ARCHITECTURE.md` và `TIEN_DO_DU_AN.md` trước khi triển khai.
+
 # Q-Dcom — Thiết kế nền tảng Authentication, Membership và Authorization
 
 > Trạng thái: BẢN THIẾT KẾ ĐANG CHUẨN BỊ — chưa triển khai mã nguồn.  
