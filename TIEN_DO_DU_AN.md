@@ -1,5 +1,9 @@
 # TIẾN ĐỘ DỰ ÁN Q-Dcom
 
+> **AUDIT TIẾN ĐỘ 2026-11-05 — GHI CHÚ MỚI NHẤT**
+> Tổng tiến độ ước lượng: **35% theo tiêu chí nghiệm thu có bằng chứng** (không phải tỷ lệ số dòng code). Trạng thái giai đoạn: A 🟡, B 🔴, C 🟡, D 🟡, E 🔴, F 🟡, G 🔴, H ⚪. Báo cáo audit 2026-11-04 xác nhận đăng nhập ID hiện chỉ là hồ sơ local, chưa có backend xác minh mật khẩu; Google Sign-In đang gộp Drive consent; backup chỉ gzip, chưa mã hóa và thiếu dữ liệu PO/sản lượng/phụ phí/tenant; restore round-trip chưa được chứng minh. PO/xưởng và Worker Wallet đã có code nền nhưng cần kiểm thử nghiệp vụ và bảo mật. PR #3 vẫn Draft, chưa merge. HEAD PR #3: 3092f4f623dec736dad82817794c049f1f6e73cb; GitHub Actions Validate run 41775820794 success, hai status Vercel success; không thay thế Firebase/Android live test. Quyết định 2026-11-04 có hiệu lực: hai phương thức độc lập (thẻ ID công ty + mật khẩu do người dùng tạo; Google Firebase Auth); chỉ bỏ PIN cũ, không bỏ thẻ ID/mật khẩu; Drive consent riêng; dữ liệu nghiệp vụ Local-first. Các checklist cũ trái quyết định này phải được xem là lỗi thời cho đến khi cập nhật. Nhánh ghi nhận audit: `audit/progress-check-2026-11-05`. Không sửa main, không merge, không deploy production.
+
+
 > **CẬP NHẬT AUDIT 2026-11-05 — ƯU TIÊN ÁP DỤNG KHI ĐỌC TIẾN ĐỘ**
 >
 > - Ước lượng tiến độ tổng thể theo tiêu chí nghiệm thu có bằng chứng: **khoảng 35%**. Đây là ước lượng quản trị, không phải phần trăm số dòng code; nhiều module đã có code nhưng chưa được xác minh end-to-end.
