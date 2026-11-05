@@ -81,3 +81,13 @@ Firebase **không phải nơi lưu dữ liệu nghiệp vụ chính** theo đị
 - Module PIN cũ đã bị gỡ; phải khảo sát lịch sử và khôi phục đúng phần employee-card cần thiết, tuyệt đối không khôi phục PIN.
 - Recovery Key, client-side encryption và backup/restore theo thiết kế mới chưa được triển khai.
 - Không merge PR hoặc deploy Firebase production khi chưa có xác nhận của chủ dự án.
+
+
+## 9. Cập nhật triển khai 2026-11-05 — Google identity và Drive consent
+
+- `signInWithGooglePopup()` chỉ dùng Google provider cho Firebase Auth identity; không yêu cầu Drive scopes và không trả Drive access token.
+- `requestGoogleDriveAccess()` là hành động riêng, chỉ chạy khi đã có Google Firebase user; dùng re-auth popup để xin Drive scopes và xác minh UID trả về vẫn là UID hiện tại.
+- UI tách nút đăng nhập Google và nút kết nối Google Drive tùy chọn trong Cài đặt.
+- Đăng xuất không còn bị chặn khi Drive token hết hạn hoặc backup lỗi. Backup khi đăng xuất chỉ là best-effort; người dùng vẫn thoát được và được thông báo nếu backup thất bại.
+- Code đã cập nhật trên nhánh `feature/batch-b-google-drive-consent-2026-11-05`; trạng thái đang chờ CI. Chưa có Firebase live popup/revoke test, vì vậy chưa đánh dấu Technical PASS.
+- **Giới hạn chưa xử lý:** backup hiện hành vẫn Gzip, chưa mã hóa, thiếu PO/sản lượng/phụ phí/tenant data và chưa có restore round-trip được xác minh. Không được quảng bá backup hiện tại là bản sao lưu đầy đủ; đây là Batch E.
