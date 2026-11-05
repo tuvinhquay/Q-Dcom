@@ -795,3 +795,9 @@
 - Trạng thái hiện tại: source/docs đã commit lên branch; PR #4 Draft. Chưa có GitHub Actions run xác nhận ở lần kiểm tra gần nhất; Vercel statuses đang Pending. Không đánh dấu Technical PASS.
 - Giới hạn còn lại: Employee ID + password backend chưa triển khai; backup hiện vẫn Gzip, thiếu PO/sản lượng/phụ phí/tenant data, chưa mã hóa và chưa có restore round-trip. Batch B tổng thể vẫn chưa hoàn thành; Batch E vẫn 🔴.
 - Điểm tiếp theo: chờ CI đúng HEAD; nếu CI PASS, kiểm tra Firebase thật (Google login không xin Drive, Drive consent riêng, từ chối/thu hồi Drive không làm mất session, logout khi Drive lỗi). Sau đó tiếp tục thiết kế/thực hiện thẻ ID + mật khẩu với server-side activation/password hashing/rate-limit/reset.
+
+
+### Cập nhật kiểm tra tự động — 2026-11-05
+- PR #4 Draft, HEAD `7769616e253da57a2c9517f55364748267260040`, mergeable=true; không merge.
+- GitHub Actions Validate run `42022790443` đã được tạo và đang chạy; tại lần đọc gần nhất mới hoàn tất checkout + setup Node, đang cài dependencies. Các bước lint, TypeScript, Next build, Functions build và Firestore Emulator còn pending.
+- Hai Vercel preview checks vẫn pending. Không ghi PASS và chưa tăng tiến độ tổng thể.
