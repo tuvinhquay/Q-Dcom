@@ -2,7 +2,7 @@
 
 > Bảng điều khiển hiện hành. Các quyết định xác thực chỉ được cập nhật theo xác nhận mới nhất của chủ dự án; lịch sử phiên cũ được giữ lại và đánh dấu đã được thay thế khi có mâu thuẫn.
 
-**Cập nhật gần nhất:** 2026-11-05 · Batch B — tách Google Sign-In khỏi quyền Google Drive; CI đang chờ xác minh.
+**Cập nhật gần nhất:** 2026-11-05 · Batch B — tách Google Sign-In khỏi quyền Google Drive; GitHub Actions run `42022790443` đang chạy bước cài dependencies.
 **Tiến độ tổng thể:** khoảng 35% theo tiêu chí nghiệm thu có bằng chứng; chưa tăng phần trăm trước khi có CI + smoke test.
 **Nhánh làm việc:** `feature/batch-b-google-drive-consent-2026-11-05`
 **PR:** #4 Draft (stack từ PR #3), chưa merge. PR #3 và #2 vẫn Draft; không sửa `main`.
@@ -13,7 +13,7 @@
 - Đã tách Firebase Google Sign-In khỏi OAuth scope Google Drive: đăng nhập không xin `drive.appdata`/`drive.metadata.readonly`.
 - Đã thêm hành động kết nối Drive riêng bằng re-auth popup; xác minh UID Drive trùng UID Google đang đăng nhập.
 - Đã bỏ việc bắt buộc backup thành công mới cho đăng xuất; backup best-effort, lỗi Drive không giữ người dùng mắc kẹt trong phiên.
-- Trạng thái: **IMPLEMENTED — CHỜ CI**. Chưa đánh dấu PASS trước khi workflow Validate chạy trên commit/PR mới.
+- Trạng thái: **IMPLEMENTED — CI IN PROGRESS**. Workflow Validate run `42022790443` trên HEAD `7769616e253da57a2c9517f55364748267260040` đang chạy bước cài dependencies; lint/typecheck/build/Emulator chưa có kết quả. Chưa đánh dấu PASS.
 - Giới hạn đã biết: backup service vẫn chỉ nén Gzip và serialize products/vocabulary/members; chưa dùng làm backup khôi phục đầy đủ. Batch E vẫn 🔴.
 
 ## Tổng quan hiện tại
@@ -28,7 +28,7 @@
 | Google Drive backup/restore | 🔴 | Consent Drive đã tách riêng trong code; backup hiện vẫn Gzip, chưa mã hóa và chưa đủ dữ liệu/restore an toàn |
 | Local-first data | 🟡 | Dữ liệu nghiệp vụ chính nằm trên thiết bị người dùng; tiếp tục rà soát Dexie/IndexedDB và mọi luồng ghi cloud hiện có |
 | CI / Firebase thật / Android smoke test | 🔵 | Chưa xác nhận kết quả mới cho toàn bộ kiến trúc hai phương thức; chưa có live smoke test |
-| PO và quy trình sản xuất | ⚪ | Chưa bắt đầu batch triển khai tiếp theo |
+| PO và quy trình sản xuất | 🟡 | Đã có code nền trong nhánh PR #2/#3; còn cần test nghiệp vụ, đồng bộ Local-first và regression |
 
 ## Quyết định kiến trúc hiện hành — 2026-11-04
 
