@@ -1,5 +1,16 @@
 # TIẾN ĐỘ DỰ ÁN Q-Dcom
 
+> **CẬP NHẬT AUDIT 2026-11-05 — ƯU TIÊN ÁP DỤNG KHI ĐỌC TIẾN ĐỘ**
+>
+> - Ước lượng tiến độ tổng thể theo tiêu chí nghiệm thu có bằng chứng: **khoảng 35%**. Đây là ước lượng quản trị, không phải phần trăm số dòng code; nhiều module đã có code nhưng chưa được xác minh end-to-end.
+> - Nhánh audit tài liệu: `audit/progress-check-2026-11-05`; nhánh nền PR #3: `feature/employee-card-pin-auth-2026-10-31`; PR #3 vẫn Draft, chưa merge. Không sửa `main`, không deploy production.
+> - PR #3 head: `3092f4f623dec736dad82817794c049f1f6e73cb`. GitHub Actions Validate run `41775820794` kết thúc **success**; hai status Vercel trên cùng HEAD cũng success. Các kết quả này chỉ xác nhận pipeline/deploy preview theo cấu hình, không chứng minh luồng đăng nhập/backup chạy đúng trên Firebase thật hoặc Android.
+> - Báo cáo audit 2026-11-04 là nguồn phát hiện code thực tế: Auth thẻ ID chưa có backend password auth; Google Sign-In còn gộp Drive consent; backup chỉ gzip, thiếu mã hóa và nhiều bảng dữ liệu; restore round-trip chưa được chứng minh. PO/sản lượng/phụ phí và Worker Wallet đã có code nền, nhưng còn cần kiểm thử nghiệp vụ, race conditions và privacy.
+> - **Quyết định kiến trúc 2026-11-04 thay thế các checklist cũ mâu thuẫn:** hai lựa chọn độc lập là (1) thẻ ID công ty + mật khẩu do người dùng tạo, backend xác minh; (2) Google qua Firebase Auth. Chỉ bỏ PIN cũ, không bỏ đăng nhập thẻ ID hoặc mật khẩu. Google Drive phải xin quyền riêng. Local-first/Dexie là kho nghiệp vụ chính; Drive chỉ là backup.
+> - Trạng thái theo giai đoạn sau audit: A 🟡; B 🔴; C 🟡; D 🟡; E 🔴; F 🟡; G 🔴; H ⚪. Không được lấy các checkbox PASS cũ để kết luận toàn bộ B/C/D/E đã hoàn tất nếu chưa đối chiếu kiến trúc mới và evidence runtime.
+> - Việc kế tiếp: xử lý Batch B theo kiến trúc mới (identity ổn định, kích hoạt thẻ chống chiếm mã, password hashing/rate-limit/reset; tách Google Auth khỏi Drive consent); sau đó Batch E (Recovery Key, client-side authenticated encryption, backup/restore đủ dữ liệu). Chưa chuyển sang mở rộng tính năng mới trước khi xử lý P0.
+
+
 > Bảng điều khiển hiện hành. Các quyết định xác thực chỉ được cập nhật theo xác nhận mới nhất của chủ dự án; lịch sử phiên cũ được giữ lại và đánh dấu đã được thay thế khi có mâu thuẫn.
 
 **Cập nhật gần nhất:** 2026-11-04 · Chốt định hướng hai phương thức đăng ký, Local-first và khôi phục dữ liệu.
