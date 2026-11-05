@@ -2,8 +2,8 @@
 
 > Bảng điều khiển hiện hành. Các quyết định xác thực chỉ được cập nhật theo xác nhận mới nhất của chủ dự án; lịch sử phiên cũ được giữ lại và đánh dấu đã được thay thế khi có mâu thuẫn.
 
-**Cập nhật gần nhất:** 2026-11-05 · Batch B — tách Google Sign-In khỏi quyền Google Drive; GitHub Actions run `42022790443` đang chạy bước cài dependencies.
-**Tiến độ tổng thể:** khoảng 35% theo tiêu chí nghiệm thu có bằng chứng; chưa tăng phần trăm trước khi có CI + smoke test.
+**Cập nhật gần nhất:** 2026-11-05 · Batch B — tách Google Sign-In khỏi quyền Google Drive; GitHub Actions run `42023073845` PASS.
+**Tiến độ tổng thể:** khoảng 36% theo tiêu chí nghiệm thu có bằng chứng; đã tăng nhẹ sau khi Batch B phụ đạt CI PASS, vẫn chờ Firebase live smoke test.
 **Nhánh làm việc:** `feature/batch-b-google-drive-consent-2026-11-05`
 **PR:** #4 Draft (stack từ PR #3), chưa merge. PR #3 và #2 vẫn Draft; không sửa `main`.
 **Nguyên tắc:** không sửa `main`, không merge PR hoặc deploy Firebase production nếu chưa được người dùng đồng ý.
@@ -13,7 +13,7 @@
 - Đã tách Firebase Google Sign-In khỏi OAuth scope Google Drive: đăng nhập không xin `drive.appdata`/`drive.metadata.readonly`.
 - Đã thêm hành động kết nối Drive riêng bằng re-auth popup; xác minh UID Drive trùng UID Google đang đăng nhập.
 - Đã bỏ việc bắt buộc backup thành công mới cho đăng xuất; backup best-effort, lỗi Drive không giữ người dùng mắc kẹt trong phiên.
-- Trạng thái: **IMPLEMENTED — CI IN PROGRESS**. Workflow Validate run `42022790443` trên HEAD `7769616e253da57a2c9517f55364748267260040` đang chạy bước cài dependencies; lint/typecheck/build/Emulator chưa có kết quả. Chưa đánh dấu PASS.
+- Trạng thái: **IMPLEMENTED — CI PASS** trên HEAD `df10bd59769bbea0baa51bbbb593b999dd30ee4e`. GitHub Actions Validate run `42023073845` PASS toàn bộ: lint, TypeScript, Next build, Functions build và Firestore Rules Emulator. Hai Vercel preview checks cũng success. Chưa có Firebase live popup/revoke test hoặc Android smoke test, nên Batch B tổng thể chưa PASS.
 - Giới hạn đã biết: backup service vẫn chỉ nén Gzip và serialize products/vocabulary/members; chưa dùng làm backup khôi phục đầy đủ. Batch E vẫn 🔴.
 
 ## Tổng quan hiện tại
@@ -22,7 +22,7 @@
 |---|---|---|
 | Xác thực và phân quyền Firebase | 🟡 | Firebase là cổng xác thực/ủy quyền; cần thiết kế lại để hỗ trợ cả tài khoản ID công ty + mật khẩu và Google |
 | Đăng ký bằng thẻ ID công ty | 🟡 | Giữ lại; mã thẻ công ty kết hợp mật khẩu riêng do người dùng tạo; phải xác minh thẻ với hồ sơ nhân viên phía server |
-| Đăng ký/đăng nhập Google | 🟡 | Đã tách luồng Firebase Google identity khỏi quyền Drive trong code; chờ CI và kiểm tra popup trên Firebase thật |
+| Đăng ký/đăng nhập Google | 🟡 | Tách identity khỏi Drive consent; CI PASS run `42023073845`; còn chờ Firebase live popup/Membership test |
 | Loại bỏ PIN cũ | 🟢 | Chỉ loại bỏ PIN; không được hiểu là loại bỏ đăng nhập thẻ ID hoặc mật khẩu người dùng |
 | Q-Dcom Recovery Key | 🟡 | Đã chốt yêu cầu: cấp mã khôi phục riêng cho tài khoản ID công ty; thiết kế và triển khai chưa bắt đầu |
 | Google Drive backup/restore | 🔴 | Consent Drive đã tách riêng trong code; backup hiện vẫn Gzip, chưa mã hóa và chưa đủ dữ liệu/restore an toàn |
@@ -71,7 +71,7 @@ Q-Dcom có **hai lựa chọn đăng ký độc lập**:
 | Sửa mã nguồn / triển khai thực tế | 🟡 | Firebase Auth + Membership Gateway đã có; phương thức PIN đã bị loại bỏ theo quyết định 2026-11-03; tiếp tục rà soát và hoàn thiện liên kết UID Worker |ng thái xác thực rõ ràng vào app shell/Dashboard; thu hồi dữ liệu xưởng khi Auth đổi UID, Membership/tenant bị khóa hoặc xác minh thất bại |
 | Kiểm tra kỹ thuật và kiểm tra thực tế | 🔵 | CI run `41213360712` trên đúng HEAD `6314943` PASS toàn bộ lint, TypeScript, Next build, Functions build và Firestore Rules Emulator; còn chờ smoke test Firebase/Termux bằng tài khoản thật |
 
-       > **Vị trí đang làm (2026-11-05):** Batch B2 phụ — code đã tách Google Firebase Auth khỏi Drive consent, thêm kết nối Drive tùy chọn và không chặn logout khi backup lỗi; PR #4 Draft đang chờ CI. Employee ID + mật khẩu backend chưa triển khai. Chỉ bỏ PIN cũ, không bỏ đăng nhập thẻ ID công ty. Batch E vẫn bị chặn bởi backup Gzip chưa mã hóa/thiếu dữ liệu/restore chưa hoàn chỉnh.
+       > **Vị trí đang làm (2026-11-05):** Batch B2 phụ — tách Google Firebase Auth khỏi Drive consent, thêm kết nối Drive tùy chọn, không chặn logout khi backup lỗi và cảnh báo rõ backup hiện tại chưa đầy đủ. CI run `42023073845` PASS; hai Vercel checks success. PR #4 Draft, chưa merge; còn chờ Firebase live popup/Membership test. Employee ID + mật khẩu backend chưa triển khai. Chỉ bỏ PIN cũ, không bỏ đăng nhập thẻ ID công ty. Batch E vẫn 🔴 vì backup Gzip chưa mã hóa/thiếu dữ liệu/restore chưa hoàn chỉnh.
 
 ## 3. Trình tự công việc tổng thể
 
@@ -421,3 +421,11 @@ Các mục lịch sử bên dưới có nhắc PIN/thẻ nhân viên/Custom Toke
 
 ## Liên kết nhật ký phiên gần nhất
 - [SESSION_LOG_2026-11-05_BATCH-B.md](SESSION_LOG_2026-11-05_BATCH-B.md) — Batch B: tách Google Sign-In/Drive consent, logout best-effort, CI và điểm dừng.
+
+
+### Xác minh cuối Batch B2 phụ — 2026-11-05
+- HEAD PR #4: `df10bd59769bbea0baa51bbbb593b999dd30ee4e`.
+- GitHub Actions Validate run `42023073845` completed/success; tất cả 11 bước, gồm Firestore Rules Emulator, đều success.
+- Hai Vercel status checks success.
+- Technical CI PASS cho thay đổi Google/Drive consent; chưa có Firebase live popup, thu hồi quyền Drive, Membership hoặc Android smoke test. Không đánh dấu toàn bộ Batch B PASS.
+- Ước lượng tổng thể điều chỉnh từ 35% lên khoảng 36%; Batch B vẫn đang làm, Batch E vẫn 🔴.
