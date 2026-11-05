@@ -17,7 +17,7 @@ import { BackgroundVideo } from "@/components/background-video";
 import { CommunityChat } from "@/components/community-chat";
 import { WorkshopDashboard } from "@/components/workshop-dashboard";
 import { GlassmorphismAnimationBackground } from "@/components/glassmorphism-animation-background";
-import { GoogleDriveConnectButton, GoogleDriveLoginButton } from "@/components/google-drive-login-button";
+import { GoogleDriveConnectButton, GoogleSignInButton } from "@/components/google-drive-login-button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductImage } from "@/components/products/ProductImage";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
@@ -732,7 +732,7 @@ export function QDcomApp() {
           <p className="local-login-note"><LockKeyhole /> Hồ sơ ID và kho được lưu trên thiết bị này. Cộng đồng chat cần đăng nhập Google.</p>
         </form>}
         <div className="login-divider"><span>{authMode === "register" ? "HOẶC ĐĂNG KÝ NHANH BẰNG" : "HOẶC ĐĂNG NHẬP NHANH BẰNG"}</span></div>
-        {isFirebaseConfigured ? <div className="google-login-wrap"><span className="google-login-label">Đăng nhập bằng Google</span><GoogleDriveLoginButton label="Đăng ký / Đăng nhập bằng Google" onAuthorized={handleGoogleAuthorization} onError={notify} /><span className="google-login-caption">Đăng nhập Google không yêu cầu quyền Drive. Bạn có thể kết nối Drive riêng trong Cài đặt khi muốn sao lưu.</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập Firebase Auth và bật nhà cung cấp đăng nhập Google.</p></div></div>}
+        {isFirebaseConfigured ? <div className="google-login-wrap"><span className="google-login-label">Đăng nhập bằng Google</span><GoogleSignInButton label="Đăng ký / Đăng nhập bằng Google" onAuthorized={handleGoogleAuthorization} onError={notify} /><span className="google-login-caption">Đăng nhập Google không yêu cầu quyền Drive. Bạn có thể kết nối Drive riêng trong Cài đặt khi muốn sao lưu.</span></div> : <div className="oauth-unavailable"><CircleAlert /><div><strong>Đăng nhập chưa được cấu hình</strong><p>Quản trị viên cần thiết lập Firebase Auth và bật nhà cung cấp đăng nhập Google.</p></div></div>}
         <button className="auth-mode-toggle" type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); }}>
           {authMode === "register" ? "Đã có tài khoản? Đăng nhập" : "Chưa là thành viên? Đăng ký ngay"}
         </button>
@@ -805,7 +805,7 @@ export function QDcomApp() {
               ? <section className="community-login-required glass"><ShieldCheck /><div><strong>Cộng đồng đã được cô lập theo mã xưởng</strong><p>Để tránh gửi nhầm tin nhắn sang cộng đồng dùng chung cũ, hãy sử dụng phòng chat tenant bên trong mục Sản lượng xưởng.</p><button className="primary-btn" onClick={() => setPage("workshop")}>Mở cộng đồng xưởng <ArrowRight /></button></div></section>
               : userProfile.firebaseUid
               ? <CommunityChat uid={userProfile.firebaseUid} displayName={userProfile.displayName} products={products} tenantId={activeTenantId} role={currentTenantRole} />
-              : <section className="community-login-required glass"><LockKeyhole /><div><strong>Cần đăng nhập bằng Google</strong><p>Tài khoản ID cá nhân chỉ hoạt động trên thiết bị này. Đăng nhập Google để sử dụng danh bạ, nhóm và chat Firebase.</p>{isFirebaseConfigured && <GoogleDriveLoginButton label="Đăng nhập Google để kết nối" onAuthorized={handleGoogleAuthorization} onError={notify} />}</div></section>}
+              : <section className="community-login-required glass"><LockKeyhole /><div><strong>Cần đăng nhập bằng Google</strong><p>Tài khoản ID cá nhân chỉ hoạt động trên thiết bị này. Đăng nhập Google để sử dụng danh bạ, nhóm và chat Firebase.</p>{isFirebaseConfigured && <GoogleSignInButton label="Đăng nhập Google để kết nối" onAuthorized={handleGoogleAuthorization} onError={notify} />}</div></section>}
           </>}
 
           {page === "reports" && <>
