@@ -34,7 +34,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
 
 Trong Firebase Console, chỉ bật Google trong Authentication > Sign-in method, đồng thời thêm domain ứng dụng vào Authorized domains. Anonymous Auth không được sử dụng; Firestore rules từ chối mọi phiên anonymous. Các biến cấu hình Firebase `NEXT_PUBLIC_*` được nhúng vào bundle trình duyệt; không đặt secret/token nhạy cảm vào những biến này. Khai báo các biến tương ứng trong môi trường deploy.
 
-Đăng nhập Google dùng Firebase Auth popup và yêu cầu scope `drive.appdata` để lưu backup trong vùng dữ liệu riêng, cùng `drive.metadata.readonly` để đọc thanh dung lượng Drive. Bật Google Drive API và, nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console. Token chỉ được giữ trong bộ nhớ ứng dụng khi đồng bộ.
+Đăng nhập Google dùng Firebase Auth popup và **không yêu cầu quyền Google Drive**. Nếu muốn sao lưu lên Drive, người dùng chủ động chọn **Kết nối Google Drive** trong Cài đặt; Q-Dcom mở bước xác thực lại để xin riêng hai scope `drive.appdata` và `drive.metadata.readonly`. Token Drive chỉ được giữ trong bộ nhớ ứng dụng. Bật Google Drive API và, nếu OAuth consent screen ở chế độ Testing, thêm email đăng nhập vào danh sách Test users trong Google Cloud Console.
 
 Firebase Auth là hộ chiếu Google cho danh bạ và chat. Đăng ký/đăng nhập bằng ID cá nhân vẫn hoạt động ngoại tuyến nhưng hồ sơ chỉ nằm trên thiết bị; hồ sơ này không cấp quyền Firebase và không được đồng bộ qua máy chủ.
 
